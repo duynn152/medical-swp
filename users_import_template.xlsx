@@ -1,0 +1,5 @@
+Full Name,Username,Email,Birth Date,Gender,Role
+Dr. John Smith,drjohnsmith,john.smith@hospital.com,1980-05-15,MALE,DOCTOR
+Nurse Jane Doe,nursejane,jane.doe@hospital.com,1985-03-22,FEMALE,STAFF
+Patient Bob Wilson,bobwilson,bob.wilson@email.com,1990-12-10,MALE,PATIENT
+Staff Mary Johnson,maryjohnson,mary.johnson@hospital.com,1992-04-18,FEMALE,STAFF 
