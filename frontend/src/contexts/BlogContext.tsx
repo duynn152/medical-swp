@@ -27,6 +27,7 @@ interface BlogContextType {
   deleteBlog: (id: number) => Promise<void>
   toggleFeatured: (id: number) => Promise<BlogPost>
   changeStatus: (id: number, status: 'PUBLISHED' | 'DRAFT' | 'ARCHIVED') => Promise<BlogPost>
+  uploadImage: (file: File) => Promise<string>
 }
 
 const BlogContext = createContext<BlogContextType | undefined>(undefined)
@@ -201,6 +202,46 @@ export const BlogProvider: React.FC<BlogProviderProps> = ({ children }) => {
     }
   }
 
+  const uploadImage = async (file: File): Promise<string> => {
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+      
+      const token = localStorage.getItem('token')
+      const headers: HeadersInit = {}
+      
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+      
+      const response = await fetch(`${API_BASE}/upload-image`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      })
+      
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('Không có quyền upload hình ảnh. Vui lòng đăng nhập.')
+        } else if (response.status === 401) {
+          throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
+        } else {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+      }
+      
+      const data = await response.json()
+      if (data.error) {
+        throw new Error(data.error)
+      }
+      
+      return data.imageUrl
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload image')
+      throw err
+    }
+  }
+
   const value: BlogContextType = {
     blogs,
     loading,
@@ -212,7 +253,8 @@ export const BlogProvider: React.FC<BlogProviderProps> = ({ children }) => {
     updateBlog,
     deleteBlog,
     toggleFeatured,
-    changeStatus
+    changeStatus,
+    uploadImage
   }
 
   return (

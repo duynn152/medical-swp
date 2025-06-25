@@ -1,16 +1,24 @@
 import { useState } from 'react'
-import { Calendar, Clock, User, Phone, Mail } from 'lucide-react'
+import { Calendar, Clock, User, Phone, Mail, CheckCircle, AlertCircle } from 'lucide-react'
+import { apiService, CreateAppointmentRequest } from '../utils/api'
 
 const AppointmentPage = () => {
   const [formData, setFormData] = useState({
     fullName: '',
     phone: '',
     email: '',
-    date: '',
-    time: '',
+    appointmentDate: '',
+    appointmentTime: '',
     department: '',
     reason: ''
   })
+
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitStatus, setSubmitStatus] = useState<{
+    type: 'success' | 'error' | null
+    message: string
+    appointmentId?: number
+  }>({ type: null, message: '' })
 
   const departments = [
     'Khoa Nội tổng hợp',
@@ -28,10 +36,70 @@ const AppointmentPage = () => {
     '14:00', '14:30', '15:00', '15:30', '16:00', '16:30'
   ]
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log('Appointment booking:', formData)
-    alert('Đặt lịch hẹn thành công! Chúng tôi sẽ liên hệ với bạn sớm nhất.')
+    setIsSubmitting(true)
+    setSubmitStatus({ type: null, message: '' })
+
+    try {
+      // Validate required fields
+      if (!formData.fullName || !formData.phone || !formData.appointmentDate || 
+          !formData.appointmentTime || !formData.department) {
+        throw new Error('Vui lòng điền đầy đủ thông tin bắt buộc')
+      }
+
+      // Check time slot availability first
+      if (formData.appointmentDate && formData.appointmentTime && formData.department) {
+        const availability = await apiService.checkTimeSlotAvailability(
+          formData.appointmentDate,
+          formData.appointmentTime,
+          formData.department
+        )
+        
+        if (!availability.available) {
+          throw new Error(availability.message)
+        }
+      }
+
+      // Create appointment
+      const appointmentRequest: CreateAppointmentRequest = {
+        fullName: formData.fullName,
+        phone: formData.phone,
+        email: formData.email,
+        appointmentDate: formData.appointmentDate,
+        appointmentTime: formData.appointmentTime,
+        department: formData.department,
+        reason: formData.reason || undefined
+      }
+
+      const response = await apiService.createPublicAppointment(appointmentRequest)
+      
+      setSubmitStatus({
+        type: 'success',
+        message: response.message,
+        appointmentId: response.appointmentId
+      })
+
+      // Reset form
+      setFormData({
+        fullName: '',
+        phone: '',
+        email: '',
+        appointmentDate: '',
+        appointmentTime: '',
+        department: '',
+        reason: ''
+      })
+
+    } catch (error) {
+      console.error('Error creating appointment:', error)
+      setSubmitStatus({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Có lỗi xảy ra khi đặt lịch hẹn. Vui lòng thử lại.'
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -40,6 +108,9 @@ const AppointmentPage = () => {
       [e.target.name]: e.target.value
     })
   }
+
+  // Get minimum date (today)
+  const today = new Date().toISOString().split('T')[0]
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
@@ -51,6 +122,31 @@ const AppointmentPage = () => {
             Vui lòng điền thông tin để đặt lịch hẹn với bác sĩ
           </p>
         </div>
+
+        {/* Success/Error Messages */}
+        {submitStatus.type && (
+          <div className={`mb-8 p-4 rounded-lg flex items-start space-x-3 ${
+            submitStatus.type === 'success' 
+              ? 'bg-green-50 border border-green-200 text-green-800' 
+              : 'bg-red-50 border border-red-200 text-red-800'
+          }`}>
+            {submitStatus.type === 'success' ? (
+              <CheckCircle className="w-6 h-6 text-green-600 mt-0.5 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="w-6 h-6 text-red-600 mt-0.5 flex-shrink-0" />
+            )}
+            <div>
+              <p className="font-medium">{submitStatus.message}</p>
+              {submitStatus.type === 'success' && submitStatus.appointmentId && (
+                <div className="mt-2 text-sm">
+                  <p><strong>Mã lịch hẹn:</strong> #{submitStatus.appointmentId}</p>
+                  <p className="mt-1">📧 <strong>Email xác nhận đã được gửi tự động</strong> (nếu bạn cung cấp email)</p>
+                  <p className="mt-1">🔔 Chúng tôi sẽ gửi email nhắc nhở 1 ngày trước ngày hẹn</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-2 gap-12">
           {/* Form */}
@@ -69,6 +165,7 @@ const AppointmentPage = () => {
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Nhập họ và tên"
+                  disabled={isSubmitting}
                 />
               </div>
 
@@ -86,13 +183,14 @@ const AppointmentPage = () => {
                     onChange={handleChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="0123456789"
+                    disabled={isSubmitting}
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Mail className="w-4 h-4 inline mr-2" />
-                    Email
+                    Email (để nhận thông báo tự động)
                   </label>
                   <input
                     type="email"
@@ -101,6 +199,7 @@ const AppointmentPage = () => {
                     onChange={handleChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="email@example.com"
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -115,6 +214,7 @@ const AppointmentPage = () => {
                   value={formData.department}
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isSubmitting}
                 >
                   <option value="">Chọn khoa khám</option>
                   {departments.map((dept) => (
@@ -131,12 +231,13 @@ const AppointmentPage = () => {
                   </label>
                   <input
                     type="date"
-                    name="date"
+                    name="appointmentDate"
                     required
-                    value={formData.date}
+                    value={formData.appointmentDate}
                     onChange={handleChange}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={today}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -146,11 +247,12 @@ const AppointmentPage = () => {
                     Giờ khám *
                   </label>
                   <select
-                    name="time"
+                    name="appointmentTime"
                     required
-                    value={formData.time}
+                    value={formData.appointmentTime}
                     onChange={handleChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={isSubmitting}
                   >
                     <option value="">Chọn giờ khám</option>
                     {timeSlots.map((time) => (
@@ -171,20 +273,38 @@ const AppointmentPage = () => {
                   rows={4}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Mô tả triệu chứng hoặc lý do khám bệnh..."
+                  disabled={isSubmitting}
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full bg-pink-600 text-white py-3 rounded-md font-semibold hover:bg-pink-700 transition-colors"
+                disabled={isSubmitting}
+                className={`w-full py-3 rounded-md font-semibold transition-colors ${
+                  isSubmitting
+                    ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                    : 'bg-pink-600 text-white hover:bg-pink-700'
+                }`}
               >
-                Đặt lịch hẹn
+                {isSubmitting ? 'Đang đặt lịch...' : 'Đặt lịch hẹn'}
               </button>
             </form>
           </div>
 
           {/* Info */}
           <div className="space-y-8">
+            <div className="bg-blue-50 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold text-blue-900 mb-4">📧 Thông báo Email tự động</h3>
+              <div className="space-y-3 text-blue-800 text-sm">
+                <p>✅ <strong>Email xác nhận</strong> sẽ được gửi ngay sau khi đặt lịch</p>
+                <p>🔔 <strong>Email nhắc nhở</strong> sẽ được gửi 1 ngày trước ngày hẹn</p>
+                <p>📱 Bạn cũng sẽ nhận được thông báo khi lịch hẹn được xác nhận</p>
+                <p className="text-xs text-blue-600 mt-2">
+                  💡 Vui lòng cung cấp email để nhận thông báo tự động
+                </p>
+              </div>
+            </div>
+
             <div className="bg-blue-50 p-6 rounded-lg">
               <h3 className="text-lg font-semibold text-blue-900 mb-4">Thông tin liên hệ</h3>
               <div className="space-y-3 text-blue-800">

@@ -6,9 +6,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 @RestController
 @RequestMapping("/blogs")
@@ -138,6 +140,22 @@ public class BlogController {
             return ResponseEntity.noContent().build();
         } catch (Exception e) {
             return ResponseEntity.notFound().build();
+        }
+    }
+    
+    // Upload image for blog post
+    @PostMapping("/upload-image")
+    public ResponseEntity<Map<String, String>> uploadImage(@RequestParam("image") MultipartFile file) {
+        try {
+            String imageUrl = blogPostService.uploadImage(file);
+            Map<String, String> response = new HashMap<>();
+            response.put("imageUrl", imageUrl);
+            response.put("message", "Upload thành công");
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, String> response = new HashMap<>();
+            response.put("error", "Upload thất bại: " + e.getMessage());
+            return ResponseEntity.badRequest().body(response);
         }
     }
 } 

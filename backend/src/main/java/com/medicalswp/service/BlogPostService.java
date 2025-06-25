@@ -5,7 +5,16 @@ import com.medicalswp.repository.BlogPostRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 import java.util.List;
 import java.util.Optional;
 
@@ -14,6 +23,11 @@ public class BlogPostService {
     
     @Autowired
     private BlogPostRepository blogPostRepository;
+    
+    // Upload directory for images
+    private static final String UPLOAD_DIR = "uploads/blog-images/";
+    private static final String[] ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"};
+    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
     
     // Get all blog posts
     public List<BlogPost> getAllBlogs() {
@@ -67,6 +81,7 @@ public class BlogPostService {
                 blog.setStatus(updatedBlog.getStatus());
                 blog.setFeatured(updatedBlog.getFeatured());
                 blog.setReadTime(updatedBlog.getReadTime());
+                blog.setImageUrl(updatedBlog.getImageUrl());
                 return blogPostRepository.save(blog);
             })
             .orElseThrow(() -> new RuntimeException("Blog post not found with id: " + id));
@@ -132,5 +147,62 @@ public class BlogPostService {
         public void setPublished(long published) { this.published = published; }
         public void setDraft(long draft) { this.draft = draft; }
         public void setFeatured(long featured) { this.featured = featured; }
+    }
+    
+    // Upload image for blog post
+    public String uploadImage(MultipartFile file) throws IOException {
+        // Validate file
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("File rỗng");
+        }
+        
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new IllegalArgumentException("File quá lớn. Tối đa 5MB");
+        }
+        
+        String originalFilename = file.getOriginalFilename();
+        if (originalFilename == null) {
+            throw new IllegalArgumentException("Tên file không hợp lệ");
+        }
+        
+        // Check file extension
+        String fileExtension = getFileExtension(originalFilename).toLowerCase();
+        boolean isValidExtension = false;
+        for (String allowedExt : ALLOWED_EXTENSIONS) {
+            if (fileExtension.equals(allowedExt)) {
+                isValidExtension = true;
+                break;
+            }
+        }
+        
+        if (!isValidExtension) {
+            throw new IllegalArgumentException("Định dạng file không được hỗ trợ. Chỉ chấp nhận: JPG, JPEG, PNG, GIF, WebP");
+        }
+        
+        // Create upload directory if not exists
+        Path uploadPath = Paths.get(UPLOAD_DIR);
+        if (!Files.exists(uploadPath)) {
+            Files.createDirectories(uploadPath);
+        }
+        
+        // Generate unique filename
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String uniqueId = UUID.randomUUID().toString().substring(0, 8);
+        String fileName = "blog_" + timestamp + "_" + uniqueId + fileExtension;
+        
+        // Save file
+        Path filePath = uploadPath.resolve(fileName);
+        Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+        
+        // Return relative URL path
+        return "/uploads/blog-images/" + fileName;
+    }
+    
+    private String getFileExtension(String filename) {
+        int lastIndexOf = filename.lastIndexOf(".");
+        if (lastIndexOf == -1) {
+            return ""; // empty extension
+        }
+        return filename.substring(lastIndexOf);
     }
 } 

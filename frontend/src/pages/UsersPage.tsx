@@ -801,7 +801,6 @@ Nurse Bob Wilson,nursebob,bob.wilson@hospital.com,1988-07-10,MALE,STAFF`
                   <option value="PATIENT">Patient</option>
                   <option value="STAFF">Staff</option>
                   <option value="DOCTOR">Doctor</option>
-                  <option value="ADMIN">Admin</option>
                 </select>
               </div>
               

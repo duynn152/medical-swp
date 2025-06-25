@@ -1,12 +1,15 @@
 # 🏥 Medical SWP - Hệ thống Quản lý Y tế
 
-Hệ thống quản lý y tế toàn diện với giao diện hiện đại, được xây dựng bằng **React + TypeScript** (Frontend) và **Spring Boot** (Backend).
+Hệ thống quản lý y tế toàn diện với giao diện hiện đại, được xây dựng bằng **React + TypeScript** (Frontend) và **Spring Boot** (Backend). 
+
+**🎯 Đã cấu hình sẵn với database PostgreSQL trên Render.com để triển khai production.**
 
 ## 📋 Mục lục
 
 - [🚀 Tính năng chính](#-tính-năng-chính)
 - [🏗️ Kiến trúc hệ thống](#️-kiến-trúc-hệ-thống)
 - [⚡ Cài đặt nhanh](#-cài-đặt-nhanh)
+- [☁️ Triển khai Production](#️-triển-khai-production)
 - [📖 Hướng dẫn chi tiết](#-hướng-dẫn-chi-tiết)
 - [🔐 Bảo mật](#-bảo-mật)
 - [📊 Cơ sở dữ liệu](#-cơ-sở-dữ-liệu)
@@ -24,9 +27,15 @@ Hệ thống quản lý y tế toàn diện với giao diện hiện đại, đ�
 
 ### 📝 Quản lý Blog
 - ✅ **Tạo và chỉnh sửa**: Editor với Markdown support
-- ✅ **Upload hình ảnh**: Drag & drop image upload
+- ✅ **Upload hình ảnh**: Hệ thống upload và lưu trữ hình ảnh trực tiếp
+- ✅ **Image Management**: Preview, delete, và quản lý hình ảnh đã upload
+- ✅ **File Validation**: Kiểm tra định dạng và kích thước file (max 5MB)
+- ✅ **Supported Formats**: JPG, JPEG, PNG, GIF, WebP
 - ✅ **Public/Private**: Hiển thị blog công khai hoặc riêng tư
-- ✅ **Categories**: Phân loại blog theo chủ đề
+- ✅ **Categories**: Phân loại blog theo 6 chủ đề y khoa
+- ✅ **Status Management**: PUBLISHED, DRAFT, ARCHIVED
+- ✅ **Featured Posts**: Đánh dấu bài viết nổi bật
+- ✅ **Bulk Operations**: Thao tác hàng loạt với nhiều bài viết
 
 ### 🔐 Xác thực & Phân quyền
 - ✅ **JWT Authentication**: Bảo mật với JSON Web Token
@@ -46,6 +55,8 @@ medical-swp/
 │   │   └── utils/        # API Utils
 │   └── public/           # Static files
 ├── ⚙️ backend/           # Spring Boot + JPA
+│   ├── uploads/          # File storage
+│   │   └── blog-images/  # Blog images storage
 │   └── src/main/java/com/medicalswp/
 │       ├── controller/   # REST Controllers
 │       ├── entity/       # JPA Entities
@@ -63,7 +74,7 @@ medical-swp/
 
 - **Java**: 17+
 - **Node.js**: 18+
-- **Database**: H2 (embedded) hoặc PostgreSQL
+- **Database**: PostgreSQL (Render.com) hoặc H2 (development)
 
 ### 🔧 Bước 1: Clone project
 
@@ -74,6 +85,16 @@ cd medical-swp
 
 ### 🔧 Bước 2: Chạy Backend
 
+**🌟 Chạy với Database Render.com (Mặc định)**:
+```bash
+# Windows
+.\run-app.ps1
+
+# Linux/Mac  
+./run-app.sh
+```
+
+**🔧 Hoặc chạy traditional**:
 ```bash
 cd backend
 ./mvnw spring-boot:run
@@ -102,6 +123,74 @@ cd scripts
 cd scripts
 ./create-admin.sh
 ```
+
+**Lưu ý**: Script sẽ cho phép bạn chọn:
+- Local development (localhost)
+- Remote production (Render.com)
+- Custom URL
+
+## ☁️ Triển khai Production
+
+### 🗄️ Database Configuration
+
+Dự án đã được cấu hình sẵn với **PostgreSQL database trên Render.com**:
+
+- **Host**: dpg-d1dqqlbipnbc73djckq0-a.oregon-postgres.render.com
+- **Port**: 5432
+- **Database**: florism_db
+- **Username**: florism_db_user
+
+### 🚀 Các Script Có Sẵn
+
+**Chạy ứng dụng Development**:
+```bash
+# Chạy cả backend và frontend cùng lúc
+./scripts/start-dev.sh    # Start development environment
+./scripts/stop-dev.sh     # Stop development environment
+```
+
+**Quản lý Database & Admin**:
+```bash
+# Script quản lý database + tạo admin
+./scripts/database-manager.sh
+```
+
+### 🔧 Environment Variables
+
+Có thể sử dụng các biến môi trường để override cấu hình:
+
+```bash
+export DB_USERNAME=your_username
+export DB_PASSWORD=your_password
+export JWT_SECRET=your_jwt_secret
+export CORS_ORIGINS=https://your-frontend.com
+```
+
+### 🗄️ Database Management
+
+Dự án cung cấp script quản lý database mạnh mẽ với nhiều tính năng:
+
+**Chạy Database Manager**:
+```bash
+# Linux/Mac
+./scripts/database-manager.sh
+
+# Windows
+.\scripts\database-manager.ps1
+```
+
+**Các tính năng có sẵn**:
+- ✅ **Test Connection**: Kiểm tra kết nối database
+- ✅ **Database Info**: Xem thông tin database (version, size, etc.)
+- ✅ **Tables Info**: Xem thông tin tables và row counts
+- ✅ **View Data**: Xem users và blog posts
+- ✅ **Statistics**: Thống kê database
+- ✅ **Backup**: Tạo backup database (.sql file)
+- ✅ **Clear Data**: Xóa tất cả data (giữ structure)
+- ✅ **Reset Database**: Drop tất cả tables
+- ✅ **Custom SQL**: Chạy SQL queries tùy chỉnh
+
+**Yêu cầu**: Cần cài đặt PostgreSQL client tools (`psql`, `pg_dump`)
 
 ## 📖 Hướng dẫn chi tiết
 
@@ -255,13 +344,28 @@ POST   /api/users/import          # Import users từ Excel
 ### 📝 Blog Management
 
 ```http
-GET    /api/blogs        # Lấy danh sách blogs (public)
-GET    /api/admin/blogs  # Lấy tất cả blogs (admin)
-GET    /api/blogs/{id}   # Lấy blog theo ID
-POST   /api/blogs        # Tạo blog mới
-PUT    /api/blogs/{id}   # Cập nhật blog
-DELETE /api/blogs/{id}   # Xóa blog
+GET    /api/blogs                 # Lấy danh sách blogs (public)
+GET    /api/admin/blogs           # Lấy tất cả blogs (admin)
+GET    /api/blogs/{id}            # Lấy blog theo ID
+POST   /api/blogs                 # Tạo blog mới
+PUT    /api/blogs/{id}            # Cập nhật blog
+DELETE /api/blogs/{id}            # Xóa blog
+POST   /api/blogs/upload-image    # Upload hình ảnh cho blog
+PUT    /api/blogs/{id}/status     # Thay đổi trạng thái blog
+PUT    /api/blogs/{id}/featured   # Toggle featured status
 ```
 
+### 🖼️ Image Management
+
+```http
+POST   /api/blogs/upload-image    # Upload hình ảnh (max 5MB)
+GET    /uploads/blog-images/{filename}  # Truy cập hình ảnh đã upload
+```
+
+**Upload Requirements**:
+- **Max file size**: 5MB
+- **Supported formats**: JPG, JPEG, PNG, GIF, WebP
+- **Authentication**: Cần JWT token để upload
+- **Storage**: Files lưu trong `backend/uploads/blog-images/`
 
 The copyright belong to FPT University

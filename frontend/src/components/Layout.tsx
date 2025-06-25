@@ -22,11 +22,44 @@ const Layout = () => {
     }
   }, [navigate])
 
-  const navigation = [
-    { name: 'Dashboard', href: '/admin', icon: Home },
-    { name: 'Users', href: '/admin/users', icon: Users },
-    { name: 'Blog Control', href: '/admin/blogs', icon: BookOpen },
+  // Define navigation items with role-based access control
+  const allNavigationItems = [
+    { 
+      name: 'Dashboard', 
+      href: '/admin', 
+      icon: Home,
+      allowedRoles: ['ADMIN', 'DOCTOR', 'STAFF', 'PATIENT'] // All roles can access dashboard
+    },
+    { 
+      name: 'Users', 
+      href: '/admin/users', 
+      icon: Users,
+      allowedRoles: ['ADMIN'] // Only admin can manage users
+    },
+    { 
+      name: 'Blog Control', 
+      href: '/admin/blogs', 
+      icon: BookOpen,
+      allowedRoles: ['ADMIN', 'DOCTOR', 'STAFF'] // Admin, doctors and staff can manage blogs
+    },
   ]
+
+  // Filter navigation based on user role
+  const navigation = userInfo 
+    ? allNavigationItems.filter(item => item.allowedRoles.includes(userInfo.role))
+    : []
+
+  // Debug: Check userInfo and role filtering
+  console.log('🐛 DEBUG - userInfo:', userInfo)
+  console.log('🐛 DEBUG - userInfo.role:', userInfo?.role)
+  console.log('🐛 DEBUG - navigation items after filter:', navigation.map(item => item.name))
+  console.log('🐛 DEBUG - localStorage userInfo:', localStorage.getItem('userInfo'))
+  
+  // Debug: Add clear cache function
+  if (userInfo?.role === 'DOCTOR' && navigation.length <= 1) {
+    console.log('⚠️  DOCTOR role detected but no Blog Control tab visible')
+    console.log('⚠️  Try clearing localStorage and login again')
+  }
 
   const isCurrentPath = (path: string) => {
     return location.pathname === path

@@ -45,6 +45,48 @@ export interface ImportResult {
   users: User[]
 }
 
+export interface Appointment {
+  id: number
+  fullName: string
+  phone: string
+  email: string
+  appointmentDate: string
+  appointmentTime: string
+  department: string
+  reason?: string
+  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
+  emailSent: boolean
+  reminderSent: boolean
+  user?: User
+  doctor?: User
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateAppointmentRequest {
+  fullName: string
+  phone: string
+  email: string
+  appointmentDate: string
+  appointmentTime: string
+  department: string
+  reason?: string
+}
+
+export interface AppointmentResponse {
+  appointmentId: number
+  message: string
+  appointment: Appointment
+}
+
+export interface AppointmentStats {
+  totalAppointments: number
+  pendingAppointments: number
+  confirmedAppointments: number
+  todaysAppointments: number
+}
+
 class ApiService {
   private getAuthHeaders() {
     const token = localStorage.getItem('authToken')
@@ -225,6 +267,182 @@ class ApiService {
     }
 
     return response.json()
+  }
+
+  // Appointment endpoints
+  async createPublicAppointment(appointment: CreateAppointmentRequest): Promise<AppointmentResponse> {
+    const response = await fetch(`${API_BASE_URL}/appointments/public`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(appointment)
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to create appointment')
+    }
+
+    return response.json()
+  }
+
+  async checkTimeSlotAvailability(date: string, time: string, department: string): Promise<{ available: boolean; message: string }> {
+    const params = new URLSearchParams({
+      date,
+      time,
+      department
+    })
+
+    const response = await fetch(`${API_BASE_URL}/appointments/public/availability?${params}`, {
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to check availability')
+    }
+
+    return response.json()
+  }
+
+  async getAllAppointments(): Promise<Appointment[]> {
+    const response = await fetch(`${API_BASE_URL}/appointments`, {
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch appointments')
+    }
+
+    return response.json()
+  }
+
+  async getAppointmentById(id: number): Promise<Appointment> {
+    const response = await fetch(`${API_BASE_URL}/appointments/${id}`, {
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch appointment')
+    }
+
+    return response.json()
+  }
+
+  async updateAppointment(id: number, appointment: Partial<Appointment>): Promise<Appointment> {
+    const response = await fetch(`${API_BASE_URL}/appointments/${id}`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(appointment)
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to update appointment')
+    }
+
+    return response.json()
+  }
+
+  async confirmAppointment(id: number): Promise<AppointmentResponse> {
+    const response = await fetch(`${API_BASE_URL}/appointments/${id}/confirm`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to confirm appointment')
+    }
+
+    return response.json()
+  }
+
+  async cancelAppointment(id: number, reason?: string): Promise<AppointmentResponse> {
+    const response = await fetch(`${API_BASE_URL}/appointments/${id}/cancel`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ reason: reason || 'Cancelled by user' })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to cancel appointment')
+    }
+
+    return response.json()
+  }
+
+  async getAppointmentsByStatus(status: string): Promise<Appointment[]> {
+    const response = await fetch(`${API_BASE_URL}/appointments/status/${status}`, {
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch appointments by status')
+    }
+
+    return response.json()
+  }
+
+  async getTodaysAppointments(): Promise<Appointment[]> {
+    const response = await fetch(`${API_BASE_URL}/appointments/today`, {
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch today\'s appointments')
+    }
+
+    return response.json()
+  }
+
+  async getUpcomingAppointments(): Promise<Appointment[]> {
+    const response = await fetch(`${API_BASE_URL}/appointments/upcoming`, {
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch upcoming appointments')
+    }
+
+    return response.json()
+  }
+
+  async searchAppointments(searchTerm: string): Promise<Appointment[]> {
+    const params = new URLSearchParams()
+    if (searchTerm) params.append('q', searchTerm)
+
+    const response = await fetch(`${API_BASE_URL}/appointments/search?${params}`, {
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to search appointments')
+    }
+
+    return response.json()
+  }
+
+  async getAppointmentStats(): Promise<AppointmentStats> {
+    const response = await fetch(`${API_BASE_URL}/appointments/stats`, {
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch appointment stats')
+    }
+
+    return response.json()
+  }
+
+  async deleteAppointment(id: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/appointments/${id}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to delete appointment')
+    }
   }
 }
 

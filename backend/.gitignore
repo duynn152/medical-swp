@@ -1,0 +1,24 @@
+# Uploads directory - ignore content but keep structure
+uploads/*
+!uploads/.gitkeep
+!uploads/blog-images/
+uploads/blog-images/*
+!uploads/blog-images/.gitkeep
+
+# Log files
+*.log
+
+# Maven
+target/
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# OS
+.DS_Store
+Thumbs.db 

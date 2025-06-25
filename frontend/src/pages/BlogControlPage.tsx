@@ -11,7 +11,8 @@ const BlogControlPage = () => {
     updateBlog,
     deleteBlog, 
     toggleFeatured, 
-    changeStatus 
+    changeStatus,
+    uploadImage
   } = useBlog()
 
   const [searchTerm, setSearchTerm] = useState('')
@@ -23,6 +24,7 @@ const BlogControlPage = () => {
   const [editingBlog, setEditingBlog] = useState<BlogPost | null>(null)
   const [actionLoading, setActionLoading] = useState<{ [key: number]: string }>({})
   const [formLoading, setFormLoading] = useState(false)
+  const [imageUploading, setImageUploading] = useState(false)
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({})
   const [selectedBlogs, setSelectedBlogs] = useState<number[]>([])
 
@@ -337,6 +339,21 @@ const BlogControlPage = () => {
     return new Date(dateString).toLocaleDateString('vi-VN')
   }
 
+  const handleImageUpload = async (file: File) => {
+    if (!file) return
+    
+    setImageUploading(true)
+    try {
+      const imageUrl = await uploadImage(file)
+      handleInputChange('imageUrl', imageUrl)
+    } catch (error) {
+      console.error('Error uploading image:', error)
+      alert('Có lỗi xảy ra khi upload hình ảnh: ' + error)
+    } finally {
+      setImageUploading(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -565,7 +582,7 @@ const BlogControlPage = () => {
                       <div className="flex-shrink-0">
                         {blog.imageUrl ? (
                           <img
-                            src={blog.imageUrl}
+                            src={blog.imageUrl.startsWith('http') ? blog.imageUrl : `http://localhost:8080${blog.imageUrl}`}
                             alt={blog.title}
                             className="w-16 h-16 object-cover rounded-md border border-gray-200"
                             onError={(e) => {
@@ -778,63 +795,53 @@ const BlogControlPage = () => {
                 {/* Image Upload */}
                 <div className="flex flex-col">
                   <label htmlFor="imageUrl" className="text-sm font-medium text-gray-700 mb-1">
-                    Hình ảnh bài viết
+                    Hình ảnh
                   </label>
                   <div className="space-y-3">
+                    {imageUploading && (
+                      <div className="flex items-center gap-2 text-blue-600">
+                        <Loader className="w-4 h-4 animate-spin" />
+                        <span className="text-sm">Đang upload hình ảnh...</span>
+                      </div>
+                    )}
+                    
                     <input
-                      type="url"
-                      id="imageUrl"
-                      name="imageUrl"
-                      value={formData.imageUrl}
-                      onChange={(e) => handleInputChange('imageUrl', e.target.value)}
-                      placeholder="Nhập URL hình ảnh hoặc tải lên hình ảnh..."
-                      className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          handleImageUpload(file);
+                        }
+                      }}
+                      disabled={imageUploading}
+                      className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
                     />
                     
-                    {/* Image Preview */}
+                    {/* Preview uploaded image */}
                     {formData.imageUrl && (
                       <div className="relative">
                         <img
-                          src={formData.imageUrl}
+                          src={formData.imageUrl.startsWith('http') ? formData.imageUrl : `http://localhost:8080${formData.imageUrl}`}
                           alt="Preview"
-                          className="w-full h-48 object-cover rounded-md border border-gray-300"
+                          className="w-32 h-32 object-cover rounded-md border border-gray-200"
                           onError={(e) => {
                             const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
+                            target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0yMCAyMEg0NFY0NEgyMFYyMFoiIGZpbGw9IiNEMUQ1REIiLz4KPHBhdGggZD0iTTI0IDI4TDMwIDM0TDM2IDI4TDQwIDMyVjQwSDI0VjI4WiIgZmlsbD0iI0E3QjJCOSIvPgo8Y2lyY2xlIGN4PSIyOCIgY3k9IjI2IiByPSIyIiBmaWxsPSIjQTdCMkI5Ii8+Cjwvc3ZnPgo=';
                           }}
                         />
                         <button
                           type="button"
                           onClick={() => handleInputChange('imageUrl', '')}
-                          className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
-                          title="Xóa hình ảnh"
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
                         >
                           ×
                         </button>
                       </div>
                     )}
                     
-                    {/* File Upload Option */}
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                      <span>Hoặc</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            // For now, we'll create a temporary URL
-                            // In production, you'd upload to a server/cloud storage
-                            const imageUrl = URL.createObjectURL(file);
-                            handleInputChange('imageUrl', imageUrl);
-                          }
-                        }}
-                        className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                      />
-                    </div>
-                    
                     <p className="text-xs text-gray-500">
-                      Hỗ trợ định dạng: JPG, PNG, GIF. Kích thước tối đa: 5MB
+                      Hỗ trợ định dạng: JPG, PNG, GIF, WebP. Kích thước tối đa: 5MB
                     </p>
                   </div>
                 </div>
