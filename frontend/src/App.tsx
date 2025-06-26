@@ -12,6 +12,7 @@ import BlogDetailPage from './pages/BlogDetailPage'
 import HomePage from './pages/HomePage'
 import UsersPage from './pages/UsersPage'
 import BlogControlPage from './pages/BlogControlPage'
+import BookingManagerPage from './pages/BookingManagerPage'
 import LoginPage from './pages/LoginPage'
 
 function App() {
@@ -43,6 +44,7 @@ function App() {
         <Route index element={<HomePage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="blogs" element={<BlogControlPage />} />
+        <Route path="bookings" element={<BookingManagerPage />} />
       </Route>
     </Routes>
   )

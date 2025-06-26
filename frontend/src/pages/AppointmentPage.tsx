@@ -171,8 +171,6 @@ const AppointmentPage = () => {
               {submitStatus.type === 'success' && submitStatus.appointmentId && (
                 <div className="mt-2 text-sm">
                   <p><strong>Mã lịch hẹn:</strong> #{submitStatus.appointmentId}</p>
-                  <p className="mt-1">📧 <strong>Email xác nhận đã được gửi tự động</strong> (nếu bạn cung cấp email)</p>
-                  <p className="mt-1">🔔 Chúng tôi sẽ gửi email nhắc nhở 1 ngày trước ngày hẹn</p>
                 </div>
               )}
             </div>
@@ -221,7 +219,7 @@ const AppointmentPage = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Mail className="w-4 h-4 inline mr-2" />
-                    Email (để nhận thông báo tự động)
+                    Email
                   </label>
                   <input
                     type="email"
@@ -324,18 +322,6 @@ const AppointmentPage = () => {
 
           {/* Info */}
           <div className="space-y-8">
-            <div className="bg-blue-50 p-6 rounded-lg">
-              <h3 className="text-lg font-semibold text-blue-900 mb-4">📧 Thông báo Email tự động</h3>
-              <div className="space-y-3 text-blue-800 text-sm">
-                <p>✅ <strong>Email xác nhận</strong> sẽ được gửi ngay sau khi đặt lịch</p>
-                <p>🔔 <strong>Email nhắc nhở</strong> sẽ được gửi 1 ngày trước ngày hẹn</p>
-                <p>📱 Bạn cũng sẽ nhận được thông báo khi lịch hẹn được xác nhận</p>
-                <p className="text-xs text-blue-600 mt-2">
-                  💡 Vui lòng cung cấp email để nhận thông báo tự động
-                </p>
-              </div>
-            </div>
-
             <div className="bg-blue-50 p-6 rounded-lg">
               <h3 className="text-lg font-semibold text-blue-900 mb-4">Thông tin liên hệ</h3>
               <div className="space-y-3 text-blue-800">
