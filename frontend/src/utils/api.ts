@@ -22,6 +22,7 @@ export interface User {
   birth?: string
   gender?: 'MALE' | 'FEMALE' | 'OTHER'
   role: 'ADMIN' | 'DOCTOR' | 'STAFF' | 'PATIENT'
+  specialty?: string
   active: boolean
   createdAt: string
   updatedAt: string
@@ -35,6 +36,7 @@ export interface CreateUserRequest {
   birth?: string
   gender?: 'MALE' | 'FEMALE' | 'OTHER'
   role: 'ADMIN' | 'DOCTOR' | 'STAFF' | 'PATIENT'
+  specialty?: string
   active?: boolean
 }
 
@@ -43,6 +45,11 @@ export interface ImportResult {
   failed: number
   errors: string[]
   users: User[]
+}
+
+export interface SpecialtyInfo {
+  code: string
+  displayName: string
 }
 
 export interface Appointment {
@@ -254,6 +261,18 @@ class ApiService {
     return response.json()
   }
 
+  async getMedicalSpecialties(): Promise<SpecialtyInfo[]> {
+    const response = await fetch(`${API_BASE_URL}/users/specialties`, {
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch medical specialties')
+    }
+
+    return response.json()
+  }
+
   async importUsers(formData: FormData): Promise<ImportResult> {
     const response = await fetch(`${API_BASE_URL}/users/import`, {
       method: 'POST',
@@ -351,6 +370,21 @@ class ApiService {
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.error || 'Failed to confirm appointment')
+    }
+
+    return response.json()
+  }
+
+  async confirmAppointmentWithDoctor(id: number, doctorId: number): Promise<AppointmentResponse> {
+    const response = await fetch(`${API_BASE_URL}/appointments/${id}/confirm-with-doctor`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ doctorId })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to confirm appointment with doctor')
     }
 
     return response.json()

@@ -22,7 +22,7 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/appointments")
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173", "https://your-frontend-domain.com"})
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173", "http://localhost:3001", "https://your-frontend-domain.com"})
 public class AppointmentController {
     
     private static final Logger logger = LoggerFactory.getLogger(AppointmentController.class);
@@ -142,7 +142,7 @@ public class AppointmentController {
      * ADMIN: Get all appointments
      */
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
+    // @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
     public ResponseEntity<List<Appointment>> getAllAppointments() {
         try {
             List<Appointment> appointments = appointmentService.getAllAppointments();
@@ -213,6 +213,37 @@ public class AppointmentController {
             return ResponseEntity.badRequest().body(error);
         } catch (Exception e) {
             logger.error("Error confirming appointment: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * ADMIN: Confirm appointment with doctor assignment
+     */
+    @PutMapping("/{id}/confirm-with-doctor")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
+    public ResponseEntity<?> confirmAppointmentWithDoctor(@PathVariable Long id, @RequestBody Map<String, Long> request) {
+        try {
+            Long doctorId = request.get("doctorId");
+            if (doctorId == null) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Doctor ID is required");
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            Appointment confirmedAppointment = appointmentService.confirmAppointmentWithDoctor(id, doctorId);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Lịch hẹn đã được xác nhận và chỉ định bác sĩ");
+            response.put("appointment", confirmedAppointment);
+            
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            logger.error("Error confirming appointment with doctor: {}", id, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

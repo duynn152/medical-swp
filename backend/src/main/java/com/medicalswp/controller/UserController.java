@@ -52,6 +52,29 @@ public class UserController {
         return userRepository.findByRole(role);
     }
 
+    @GetMapping("/specialties")
+    public List<SpecialtyInfo> getMedicalSpecialties() {
+        List<SpecialtyInfo> specialties = new ArrayList<>();
+        for (User.MedicalSpecialty specialty : User.MedicalSpecialty.values()) {
+            specialties.add(new SpecialtyInfo(specialty.name(), specialty.getDisplayName()));
+        }
+        return specialties;
+    }
+
+    public static class SpecialtyInfo {
+        public String code;
+        public String displayName;
+        
+        public SpecialtyInfo(String code, String displayName) {
+            this.code = code;
+            this.displayName = displayName;
+        }
+        
+        // Getters
+        public String getCode() { return code; }
+        public String getDisplayName() { return displayName; }
+    }
+
     @PostMapping
     public ResponseEntity<User> createUser(@Valid @RequestBody User user) {
         // Check if username or email already exists
@@ -114,6 +137,7 @@ public class UserController {
         user.setBirth(userDetails.getBirth());
         user.setGender(userDetails.getGender());
         user.setRole(userDetails.getRole());
+        user.setSpecialty(userDetails.getSpecialty());
         user.setActive(userDetails.getActive());
         
         // Only update password if provided
@@ -215,7 +239,7 @@ public class UserController {
     }
     
     private User parseUserFromRow(Row row, int rowNum) {
-        // Expected columns: Full Name, Username, Email, Birth Date, Gender, Role
+        // Expected columns: Full Name, Username, Email, Birth Date, Gender, Role, Specialty (for doctors)
         if (row.getPhysicalNumberOfCells() < 3) {
             throw new RuntimeException("Missing required columns (minimum: Full Name, Username, Email)");
         }
@@ -282,6 +306,19 @@ public class UserController {
             }
         } else {
             user.setRole(User.Role.PATIENT);
+        }
+        
+        // Specialty (optional, only for doctors)
+        Cell specialtyCell = row.getCell(6);
+        if (specialtyCell != null && !specialtyCell.getStringCellValue().trim().isEmpty() && 
+            user.getRole() == User.Role.DOCTOR) {
+            try {
+                User.MedicalSpecialty specialty = User.MedicalSpecialty.valueOf(specialtyCell.getStringCellValue().trim().toUpperCase());
+                user.setSpecialty(specialty);
+            } catch (IllegalArgumentException e) {
+                // If invalid specialty, leave it null or set to a default
+                user.setSpecialty(User.MedicalSpecialty.GENERAL_PRACTICE);
+            }
         }
         
         return user;

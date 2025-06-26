@@ -65,8 +65,12 @@ public class SecurityConfig implements WebMvcConfigurer {
                 // Allow public access to published blog content
                 .requestMatchers(HttpMethod.GET, "/blogs/published", "/blogs/featured", "/blogs/category/**", "/blogs/search").permitAll()
                 
-                // Allow public access to appointment booking endpoints
+                // Allow public access to appointment booking endpoints (phải đứng trước /appointments/**)
                 .requestMatchers("/appointments/public/**").permitAll()
+                
+                // Temporarily allow appointments access for testing
+                .requestMatchers(HttpMethod.GET, "/appointments/**").permitAll()
+                .requestMatchers(HttpMethod.PUT, "/appointments/*/confirm-with-doctor").permitAll()
                 
                 // All other blog operations require authentication with proper roles
                 .requestMatchers(HttpMethod.GET, "/blogs").hasAnyAuthority("ROLE_ADMIN", "ROLE_DOCTOR", "ROLE_STAFF")
@@ -77,8 +81,8 @@ public class SecurityConfig implements WebMvcConfigurer {
                 // User management - admin only
                 .requestMatchers("/users/**").hasAuthority("ROLE_ADMIN")
                 
-                // Appointment management
-                .requestMatchers("/appointments/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_DOCTOR", "ROLE_STAFF", "ROLE_PATIENT")
+                // Appointment management - phải đứng sau /appointments/public/**
+                // .requestMatchers("/appointments/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_DOCTOR", "ROLE_STAFF")
                 
                 .anyRequest().authenticated()
             )

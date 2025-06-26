@@ -141,6 +141,40 @@ public class AppointmentService {
     }
     
     /**
+     * Xác nhận appointment với bác sĩ được chỉ định
+     */
+    public Appointment confirmAppointmentWithDoctor(Long appointmentId, Long doctorId) {
+        logger.info("Confirming appointment with ID: {} and assigning doctor ID: {}", appointmentId, doctorId);
+        
+        // Validate appointment exists
+        Optional<Appointment> appointmentOptional = appointmentRepository.findById(appointmentId);
+        if (!appointmentOptional.isPresent()) {
+            throw new IllegalArgumentException("Appointment not found with ID: " + appointmentId);
+        }
+        
+        // Validate doctor exists and has DOCTOR role
+        Optional<User> doctorOptional = userRepository.findById(doctorId);
+        if (!doctorOptional.isPresent()) {
+            throw new IllegalArgumentException("Doctor not found with ID: " + doctorId);
+        }
+        
+        User doctor = doctorOptional.get();
+        if (doctor.getRole() != User.Role.DOCTOR) {
+            throw new IllegalArgumentException("User with ID " + doctorId + " is not a doctor");
+        }
+        
+        // Update appointment
+        Appointment appointment = appointmentOptional.get();
+        appointment.setStatus(Appointment.AppointmentStatus.CONFIRMED);
+        appointment.setDoctor(doctor);
+        
+        Appointment confirmedAppointment = appointmentRepository.save(appointment);
+        logger.info("Appointment confirmed successfully with doctor assigned: {}", confirmedAppointment.getId());
+        
+        return confirmedAppointment;
+    }
+    
+    /**
      * Kiểm tra time slot availability
      */
     public boolean isTimeSlotAvailable(LocalDate date, LocalTime time, String department) {

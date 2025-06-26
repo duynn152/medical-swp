@@ -78,9 +78,9 @@ app:
 
 logging:
   level:
-    com.medicalswp: INFO
-    com.medicalswp.filter.JwtAuthenticationFilter: INFO
-    org.springframework.security: INFO
+    com.medicalswp: DEBUG
+    com.medicalswp.filter.JwtAuthenticationFilter: DEBUG
+    org.springframework.security: DEBUG
     org.hibernate.SQL: ${SHOW_SQL:false}
     org.springframework.mail: DEBUG
 

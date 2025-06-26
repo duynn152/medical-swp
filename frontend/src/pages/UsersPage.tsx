@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, Edit, Trash2, Search, Filter, X, Eye, EyeOff, CheckSquare, Square, UserCheck, UserX, Users, Upload, Download, FileSpreadsheet } from 'lucide-react'
-import { apiService, User, CreateUserRequest, isAuthenticated, getStoredUserInfo } from '../utils/api'
+import { apiService, User, CreateUserRequest, SpecialtyInfo, isAuthenticated, getStoredUserInfo } from '../utils/api'
 
 interface CreateUserForm {
   username: string
@@ -10,6 +10,7 @@ interface CreateUserForm {
   birth: string
   gender: 'MALE' | 'FEMALE' | 'OTHER'
   role: 'ADMIN' | 'DOCTOR' | 'STAFF' | 'PATIENT'
+  specialty: string
 }
 
 interface EditUserForm {
@@ -19,6 +20,7 @@ interface EditUserForm {
   birth: string
   gender: 'MALE' | 'FEMALE' | 'OTHER'
   role: 'ADMIN' | 'DOCTOR' | 'STAFF' | 'PATIENT'
+  specialty: string
   active: boolean
 }
 
@@ -58,7 +60,8 @@ const UsersPage = () => {
     fullName: '',
     birth: '',
     gender: 'MALE',
-    role: 'PATIENT'
+    role: 'PATIENT',
+    specialty: ''
   })
   
   const [editForm, setEditForm] = useState<EditUserForm>({
@@ -68,6 +71,7 @@ const UsersPage = () => {
     birth: '',
     gender: 'MALE',
     role: 'PATIENT',
+    specialty: '',
     active: true
   })
 
@@ -78,6 +82,9 @@ const UsersPage = () => {
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [showImportResult, setShowImportResult] = useState(false)
 
+  // Specialties states
+  const [specialties, setSpecialties] = useState<SpecialtyInfo[]>([])
+
   // Load users on component mount
   useEffect(() => {
     // Debug authentication state
@@ -87,6 +94,9 @@ const UsersPage = () => {
     console.log('Debug: userInfo:', getStoredUserInfo())
     
     loadUsers()
+    if (isAuthenticated()) {
+      loadSpecialties()
+    }
   }, [])
 
   const loadUsers = async () => {
@@ -99,6 +109,15 @@ const UsersPage = () => {
       setError(err.message || 'Failed to load users')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadSpecialties = async () => {
+    try {
+      const data = await apiService.getMedicalSpecialties()
+      setSpecialties(data)
+    } catch (err: any) {
+      console.error('Failed to load specialties:', err)
     }
   }
 
@@ -262,6 +281,7 @@ const UsersPage = () => {
         birth: createForm.birth,
         gender: createForm.gender,
         role: createForm.role,
+        ...(createForm.role === 'DOCTOR' && { specialty: createForm.specialty }),
         active: true
       }
       
@@ -275,7 +295,8 @@ const UsersPage = () => {
         fullName: '',
         birth: '',
         gender: 'MALE',
-        role: 'PATIENT'
+        role: 'PATIENT',
+        specialty: ''
       })
       loadUsers()
     } catch (err: any) {
@@ -295,6 +316,7 @@ const UsersPage = () => {
         birth: editForm.birth,
         gender: editForm.gender,
         role: editForm.role,
+        ...(editForm.role === 'DOCTOR' && { specialty: editForm.specialty }),
         active: editForm.active
       }
       
@@ -321,6 +343,7 @@ const UsersPage = () => {
       birth: user.birth || '',
       gender: (user.gender as 'MALE' | 'FEMALE' | 'OTHER') || 'MALE',
       role: user.role,
+      specialty: user.specialty || '',
       active: user.active
     })
     setShowEditModal(true)
@@ -360,10 +383,10 @@ const UsersPage = () => {
 
   const downloadTemplate = () => {
     // Create a simple CSV template for Excel
-    const template = `Full Name,Username,Email,Birth Date,Gender,Role
-John Doe,johndoe,john@example.com,1990-01-15,MALE,PATIENT
-Dr. Jane Smith,drjanesmith,jane.smith@hospital.com,1985-03-22,FEMALE,DOCTOR
-Nurse Bob Wilson,nursebob,bob.wilson@hospital.com,1988-07-10,MALE,STAFF`
+    const template = `Full Name,Username,Email,Birth Date,Gender,Role,Specialty
+John Doe,johndoe,john@example.com,1990-01-15,MALE,PATIENT,
+Dr. Jane Smith,drjanesmith,jane.smith@hospital.com,1985-03-22,FEMALE,DOCTOR,CARDIOLOGY
+Nurse Bob Wilson,nursebob,bob.wilson@hospital.com,1988-07-10,MALE,STAFF,`
     
     const blob = new Blob([template], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
@@ -532,6 +555,9 @@ Nurse Bob Wilson,nursebob,bob.wilson@hospital.com,1988-07-10,MALE,STAFF`
                     Role
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Specialty
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -575,6 +601,15 @@ Nurse Bob Wilson,nursebob,bob.wilson@hospital.com,1988-07-10,MALE,STAFF`
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
                         {user.role}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {user.role === 'DOCTOR' && user.specialty ? (
+                        <span className="text-sm text-gray-900">
+                          {specialties.find(s => s.code === user.specialty)?.displayName || user.specialty}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-400">-</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -796,13 +831,40 @@ Nurse Bob Wilson,nursebob,bob.wilson@hospital.com,1988-07-10,MALE,STAFF`
                 <select
                   className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                   value={createForm.role}
-                  onChange={(e) => setCreateForm({...createForm, role: e.target.value as 'ADMIN' | 'DOCTOR' | 'STAFF' | 'PATIENT'})}
+                  onChange={(e) => {
+                    const newRole = e.target.value as 'ADMIN' | 'DOCTOR' | 'STAFF' | 'PATIENT'
+                    setCreateForm({
+                      ...createForm, 
+                      role: newRole,
+                      specialty: newRole === 'DOCTOR' ? createForm.specialty : ''
+                    })
+                  }}
                 >
                   <option value="PATIENT">Patient</option>
                   <option value="STAFF">Staff</option>
                   <option value="DOCTOR">Doctor</option>
                 </select>
               </div>
+              
+              {/* Specialty field - only show for doctors */}
+              {createForm.role === 'DOCTOR' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Medical Specialty</label>
+                  <select
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    value={createForm.specialty}
+                    onChange={(e) => setCreateForm({...createForm, specialty: e.target.value})}
+                    required={createForm.role === 'DOCTOR'}
+                  >
+                    <option value="">Select Specialty</option>
+                    {specialties.map((specialty) => (
+                      <option key={specialty.code} value={specialty.code}>
+                        {specialty.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               
               <div className="flex justify-end space-x-2 mt-6">
                 <button
@@ -900,13 +962,40 @@ Nurse Bob Wilson,nursebob,bob.wilson@hospital.com,1988-07-10,MALE,STAFF`
                 <select
                   className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                   value={editForm.role}
-                  onChange={(e) => setEditForm({...editForm, role: e.target.value as 'ADMIN' | 'DOCTOR' | 'STAFF' | 'PATIENT'})}
+                  onChange={(e) => {
+                    const newRole = e.target.value as 'ADMIN' | 'DOCTOR' | 'STAFF' | 'PATIENT'
+                    setEditForm({
+                      ...editForm, 
+                      role: newRole,
+                      specialty: newRole === 'DOCTOR' ? editForm.specialty : ''
+                    })
+                  }}
                 >
                   <option value="PATIENT">Patient</option>
                   <option value="STAFF">Staff</option>
                   <option value="DOCTOR">Doctor</option>
                 </select>
               </div>
+              
+              {/* Specialty field - only show for doctors */}
+              {editForm.role === 'DOCTOR' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Medical Specialty</label>
+                  <select
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    value={editForm.specialty}
+                    onChange={(e) => setEditForm({...editForm, specialty: e.target.value})}
+                    required={editForm.role === 'DOCTOR'}
+                  >
+                    <option value="">Select Specialty</option>
+                    {specialties.map((specialty) => (
+                      <option key={specialty.code} value={specialty.code}>
+                        {specialty.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               
               <div className="flex items-center">
                 <input
@@ -1003,7 +1092,8 @@ Nurse Bob Wilson,nursebob,bob.wilson@hospital.com,1988-07-10,MALE,STAFF`
                   <li>• Upload an Excel file (.xlsx) with user data</li>
                   <li>• Password will be set to username by default</li>
                   <li>• Required columns: Full Name, Username, Email</li>
-                  <li>• Optional: Birth Date, Gender, Role</li>
+                  <li>• Optional: Birth Date, Gender, Role, Specialty</li>
+                  <li>• Specialty is required for DOCTOR role</li>
                   <li>• ADMIN role cannot be imported for security</li>
                 </ul>
                 <button

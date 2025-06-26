@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Calendar, Clock, User, Phone, Mail, Building2, Check, X, Eye, Search, AlertCircle, CheckCircle, XCircle, Calendar as CalendarIcon, TrendingUp } from 'lucide-react'
+import { Calendar, Clock, User, Phone, Mail, Building2, Check, X, Eye, Search, AlertCircle, CheckCircle, XCircle, Calendar as CalendarIcon, TrendingUp, UserCheck } from 'lucide-react'
 import { apiService } from '../utils/api'
 import toast from 'react-hot-toast'
 
@@ -21,7 +21,15 @@ interface Appointment {
   doctor?: {
     id: number
     fullName: string
+    specialty?: string
   }
+}
+
+interface Doctor {
+  id: number
+  fullName: string
+  specialty?: string
+  email: string
 }
 
 interface AppointmentStats {
@@ -44,6 +52,49 @@ const BookingManagerPage = () => {
   const [statusFilter, setStatusFilter] = useState('')
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
+
+  // Doctor selection modal states
+  const [showDoctorModal, setShowDoctorModal] = useState(false)
+  const [selectedAppointmentForConfirm, setSelectedAppointmentForConfirm] = useState<Appointment | null>(null)
+  const [doctors, setDoctors] = useState<Doctor[]>([])
+  const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(null)
+  const [confirmingWithDoctor, setConfirmingWithDoctor] = useState(false)
+  const [specialties, setSpecialties] = useState<Array<{code: string, displayName: string}>>([])
+
+  // Mapping department to medical specialties
+  const departmentToSpecialtyMap: Record<string, string[]> = {
+    'Khoa Nội tổng hợp': ['INTERNAL_MEDICINE', 'GENERAL_PRACTICE'],
+    'Khoa Ngoại tổng hợp': ['SURGERY', 'GENERAL_PRACTICE'],
+    'Khoa Sản phụ khoa': ['GYNECOLOGY'],
+    'Khoa Nhi': ['PEDIATRICS'],
+    'Khoa Mắt': ['OPHTHALMOLOGY'],
+    'Khoa Tai mũi họng': ['ENT'],
+    'Khoa Da liễu': ['DERMATOLOGY'],
+    'Khoa Thần kinh': ['NEUROLOGY'],
+    'Khoa Tim mạch': ['CARDIOLOGY'],
+    'Khoa Tiêu hóa': ['GASTROENTEROLOGY'],
+    'Khoa Hô hấp': ['PULMONOLOGY'],
+    'Khoa Thận': ['NEPHROLOGY'],
+    'Khoa Nội tiết': ['ENDOCRINOLOGY'],
+    'Khoa Chấn thương chỉnh hình': ['ORTHOPEDICS'],
+    'Khoa Ung bướu': ['ONCOLOGY'],
+    'Khoa Tâm thần': ['PSYCHIATRY'],
+    'Khoa Tiết niệu': ['UROLOGY'],
+    'Khoa Khớp': ['RHEUMATOLOGY'],
+    'Khoa Chẩn đoán hình ảnh': ['RADIOLOGY'],
+    'Khoa Gây mê hồi sức': ['ANESTHESIOLOGY'],
+    'Khoa Cấp cứu': ['EMERGENCY_MEDICINE']
+  }
+
+  // Get relevant doctors for a specific appointment department
+  const getRelevantDoctors = (department: string): Doctor[] => {
+    const relevantSpecialties = departmentToSpecialtyMap[department] || ['GENERAL_PRACTICE']
+    return doctors.filter(doctor => 
+      !doctor.specialty || // Include doctors without specialty (general practice)
+      relevantSpecialties.includes(doctor.specialty) ||
+      doctor.specialty === 'GENERAL_PRACTICE' // Always include general practice doctors
+    )
+  }
 
   const statusColors = {
     PENDING: 'bg-yellow-100 text-yellow-800',
@@ -72,6 +123,8 @@ const BookingManagerPage = () => {
   useEffect(() => {
     fetchAppointments()
     fetchStats()
+    fetchDoctors()
+    fetchSpecialties()
   }, [])
 
   useEffect(() => {
@@ -122,6 +175,58 @@ const BookingManagerPage = () => {
     }
   }
 
+  const fetchDoctors = async () => {
+    try {
+      const users = await apiService.getUsersByRole('DOCTOR')
+      const doctorsList = users.map(user => ({
+        id: user.id,
+        fullName: user.fullName,
+        specialty: user.specialty,
+        email: user.email
+      }))
+      setDoctors(doctorsList)
+    } catch (error) {
+      console.error('Error fetching doctors:', error)
+      toast.error('Không thể tải danh sách bác sĩ')
+    }
+  }
+
+  const fetchSpecialties = async () => {
+    try {
+      const specialtiesData = await apiService.getMedicalSpecialties()
+      setSpecialties(specialtiesData)
+    } catch (error) {
+      console.error('Error fetching specialties:', error)
+      toast.error('Không thể tải danh sách chuyên khoa')
+    }
+  }
+
+  const handleConfirmWithDoctor = async () => {
+    if (!selectedAppointmentForConfirm || !selectedDoctorId) {
+      toast.error('Vui lòng chọn bác sĩ')
+      return
+    }
+
+    setConfirmingWithDoctor(true)
+    try {
+      await apiService.confirmAppointmentWithDoctor(selectedAppointmentForConfirm.id, selectedDoctorId)
+      
+      await fetchAppointments()
+      await fetchStats()
+      
+      setShowDoctorModal(false)
+      setSelectedAppointmentForConfirm(null)
+      setSelectedDoctorId(null)
+      
+      toast.success('Lịch hẹn đã được xác nhận và chỉ định bác sĩ')
+    } catch (error) {
+      console.error('Error confirming appointment with doctor:', error)
+      toast.error('Không thể xác nhận lịch hẹn')
+    } finally {
+      setConfirmingWithDoctor(false)
+    }
+  }
+
   const filterAppointments = () => {
     let filtered = appointments
 
@@ -168,6 +273,12 @@ const BookingManagerPage = () => {
 
   const formatDateTime = (dateTimeString: string) => {
     return new Date(dateTimeString).toLocaleString('vi-VN')
+  }
+
+  const getSpecialtyDisplayName = (specialtyCode?: string) => {
+    if (!specialtyCode) return 'Đa khoa'
+    const specialty = specialties.find(s => s.code === specialtyCode)
+    return specialty?.displayName || specialtyCode
   }
 
   const StatusIcon = ({ status }: { status: string }) => {
@@ -312,6 +423,9 @@ const BookingManagerPage = () => {
                   Khoa
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Bác sĩ
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Trạng thái
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -322,7 +436,7 @@ const BookingManagerPage = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center">
+                  <td colSpan={7} className="px-6 py-12 text-center">
                     <div className="inline-flex items-center">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="ml-2">Đang tải...</span>
@@ -331,7 +445,7 @@ const BookingManagerPage = () => {
                 </tr>
               ) : filteredAppointments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                     {searchTerm || statusFilter ? 'Không tìm thấy lịch hẹn phù hợp' : 'Chưa có lịch hẹn nào'}
                   </td>
                 </tr>
@@ -390,6 +504,13 @@ const BookingManagerPage = () => {
                     </td>
                     
                     <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center text-sm text-gray-900">
+                        <User className="w-4 h-4 mr-1 text-gray-400" />
+                        {appointment.doctor?.fullName || 'Chưa có bác sĩ'}
+                      </div>
+                    </td>
+                    
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[appointment.status]}`}>
                         <StatusIcon status={appointment.status} />
                         <span className="ml-1">
@@ -414,11 +535,14 @@ const BookingManagerPage = () => {
                         {appointment.status === 'PENDING' && (
                           <>
                             <button
-                              onClick={() => updateAppointmentStatus(appointment.id, 'CONFIRMED')}
+                              onClick={() => {
+                                setSelectedAppointmentForConfirm(appointment)
+                                setShowDoctorModal(true)
+                              }}
                               className="text-green-600 hover:text-green-900"
                               title="Xác nhận"
                             >
-                              <Check className="w-4 h-4" />
+                              <UserCheck className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => updateAppointmentStatus(appointment.id, 'CANCELLED')}
@@ -486,6 +610,18 @@ const BookingManagerPage = () => {
                   <label className="block text-sm font-medium text-gray-700">Khoa khám</label>
                   <p className="mt-1 text-sm text-gray-900">{selectedAppointment.department}</p>
                 </div>
+                
+                {selectedAppointment.doctor && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Bác sĩ phụ trách</label>
+                    <div className="mt-1">
+                      <p className="text-sm font-medium text-gray-900">{selectedAppointment.doctor.fullName}</p>
+                      {selectedAppointment.doctor.specialty && (
+                        <p className="text-xs text-gray-600">Chuyên khoa: {getSpecialtyDisplayName(selectedAppointment.doctor.specialty)}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Lý do khám</label>
@@ -563,6 +699,118 @@ const BookingManagerPage = () => {
                     </button>
                   </>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Doctor Selection Modal */}
+      {showDoctorModal && selectedAppointmentForConfirm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Chọn bác sĩ cho lịch hẹn #{selectedAppointmentForConfirm.id}
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowDoctorModal(false)
+                    setSelectedDoctorId(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-2">Thông tin lịch hẹn:</h4>
+                <p className="text-sm text-gray-600">
+                  <strong>Bệnh nhân:</strong> {selectedAppointmentForConfirm.fullName}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Khoa:</strong> {selectedAppointmentForConfirm.department}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Ngày giờ:</strong> {new Date(selectedAppointmentForConfirm.appointmentDate).toLocaleDateString('vi-VN')} lúc {selectedAppointmentForConfirm.appointmentTime.slice(0, 5)}
+                </p>
+              </div>
+              
+              <div className="space-y-3">
+                <h4 className="font-medium text-gray-900">Chọn bác sĩ:</h4>
+                <p className="text-sm text-gray-600">
+                  Hiển thị các bác sĩ có chuyên khoa phù hợp với <strong>{selectedAppointmentForConfirm.department}</strong>
+                </p>
+                {getRelevantDoctors(selectedAppointmentForConfirm.department).length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="text-gray-500 mb-2">
+                      <User className="w-12 h-12 mx-auto text-gray-300" />
+                    </div>
+                    <p className="text-gray-500">
+                      Không có bác sĩ nào phù hợp với khoa <strong>{selectedAppointmentForConfirm.department}</strong>
+                    </p>
+                    <p className="text-sm text-gray-400 mt-1">
+                      Vui lòng thêm bác sĩ có chuyên khoa phù hợp hoặc bác sĩ đa khoa
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 max-h-60 overflow-y-auto">
+                    {getRelevantDoctors(selectedAppointmentForConfirm.department).map((doctor) => (
+                      <button
+                        key={doctor.id}
+                        onClick={() => setSelectedDoctorId(doctor.id)}
+                        className={`w-full p-4 border rounded-lg text-left transition-colors ${
+                          selectedDoctorId === doctor.id
+                            ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500'
+                            : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h5 className="font-medium text-gray-900">{doctor.fullName}</h5>
+                            {doctor.specialty && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                Chuyên khoa: {getSpecialtyDisplayName(doctor.specialty)}
+                              </p>
+                            )}
+                            <p className="text-xs text-gray-500 mt-1">{doctor.email}</p>
+                          </div>
+                          {selectedDoctorId === doctor.id && (
+                            <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowDoctorModal(false)
+                    setSelectedDoctorId(null)
+                  }}
+                  disabled={confirmingWithDoctor}
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handleConfirmWithDoctor}
+                  disabled={!selectedDoctorId || confirmingWithDoctor || getRelevantDoctors(selectedAppointmentForConfirm.department).length === 0}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {confirmingWithDoctor && (
+                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  )}
+                  {getRelevantDoctors(selectedAppointmentForConfirm.department).length === 0 
+                    ? 'Không có bác sĩ phù hợp' 
+                    : 'Xác nhận lịch hẹn'
+                  }
+                </button>
               </div>
             </div>
           </div>
