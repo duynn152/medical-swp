@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, Filter, Users, Eye, Edit, UserPlus, FileText, Calendar, Clock, CheckCircle, XCircle, X } from 'lucide-react'
+import { Search, Filter, Users, Eye, Edit, UserPlus, Calendar, Clock, XCircle, X } from 'lucide-react'
 import { apiService, Appointment, User, getStoredUserInfo } from '../utils/api'
 
 interface PatientWithAppointments {
@@ -28,7 +28,22 @@ const PatientControlPage = () => {
   const [selectedPatientForNotes, setSelectedPatientForNotes] = useState<PatientWithAppointments | null>(null)
   const [selectedAppointmentForNotes, setSelectedAppointmentForNotes] = useState<Appointment | null>(null)
   const [doctorNotes, setDoctorNotes] = useState('')
+  const [appointmentStatus, setAppointmentStatus] = useState<'COMPLETED' | 'NO_SHOW'>('COMPLETED')
   const [savingNotes, setSavingNotes] = useState(false)
+  
+  // Follow-up checkbox and form states for notes modal
+  const [scheduleFollowUp, setScheduleFollowUp] = useState(false)
+  const [followUpInNotesData, setFollowUpInNotesData] = useState({
+    appointmentDate: '',
+    appointmentTime: '',
+    reason: 'Tái khám theo yêu cầu của bác sĩ'
+  })
+
+
+
+  // Patient detail modal states
+  const [showPatientDetailModal, setShowPatientDetailModal] = useState(false)
+  const [selectedPatientForDetail, setSelectedPatientForDetail] = useState<PatientWithAppointments | null>(null)
 
   // Load patients with confirmed/payment requested appointments on component mount
   useEffect(() => {
@@ -148,10 +163,7 @@ const PatientControlPage = () => {
     return new Date(dateString).toLocaleDateString('vi-VN')
   }
 
-  const formatDateTime = (dateString: string, timeString?: string) => {
-    const date = new Date(dateString).toLocaleDateString('vi-VN')
-    return timeString ? `${date} ${timeString}` : date
-  }
+
 
   const getStatusColor = (hasUpcoming: boolean) => {
     return hasUpcoming 
@@ -164,17 +176,68 @@ const PatientControlPage = () => {
     setSelectedPatientForNotes(patient)
     setSelectedAppointmentForNotes(appointment)
     setDoctorNotes(appointment.notes || '')
+    // Set status to COMPLETED by default, or keep current status if it's already COMPLETED or NO_SHOW
+    const currentStatus = appointment.status
+    setAppointmentStatus(currentStatus === 'COMPLETED' || currentStatus === 'NO_SHOW' ? currentStatus : 'COMPLETED')
+    
+    // Reset follow-up states
+    setScheduleFollowUp(false)
+    setFollowUpInNotesData({
+      appointmentDate: '',
+      appointmentTime: '',
+      reason: 'Tái khám theo yêu cầu của bác sĩ'
+    })
+    
     setShowNotesModal(true)
   }
 
   const handleSaveNotes = async () => {
-    if (!selectedAppointmentForNotes) return
+    if (!selectedAppointmentForNotes || !selectedPatientForNotes) return
+
+    // Validate follow-up data if checkbox is checked
+    if (scheduleFollowUp && (!followUpInNotesData.appointmentDate || !followUpInNotesData.appointmentTime)) {
+      setError('Vui lòng điền đầy đủ thông tin ngày và giờ tái khám')
+      return
+    }
 
     try {
       setSavingNotes(true)
+      
+      // Update both notes and status
       await apiService.updateAppointment(selectedAppointmentForNotes.id, {
-        notes: doctorNotes
+        notes: doctorNotes,
+        status: appointmentStatus
       })
+      
+      // Create follow-up appointment if checkbox is checked
+      if (scheduleFollowUp) {
+        const followUpAppointment = {
+          fullName: selectedPatientForNotes.fullName,
+          phone: selectedPatientForNotes.phone,
+          email: selectedPatientForNotes.email,
+          appointmentDate: followUpInNotesData.appointmentDate,
+          appointmentTime: followUpInNotesData.appointmentTime,
+          department: selectedAppointmentForNotes.department || 'GENERAL_MEDICINE',
+          reason: followUpInNotesData.reason || 'Tái khám theo yêu cầu của bác sĩ'
+        }
+
+        // Create the follow-up appointment
+        const createdAppointmentResponse = await apiService.createPublicAppointment(followUpAppointment)
+        
+        // Get current doctor info from user info
+        const userInfo = getStoredUserInfo()
+        
+        // If current user is a doctor, auto-assign to follow-up appointment
+        if (userInfo?.role === 'DOCTOR' && userInfo.id && createdAppointmentResponse.appointmentId) {
+          try {
+            // Confirm appointment with current doctor
+            await apiService.confirmAppointmentWithDoctor(createdAppointmentResponse.appointmentId, userInfo.id)
+          } catch (doctorAssignError) {
+            console.warn('Could not auto-assign doctor to follow-up appointment:', doctorAssignError)
+            // Continue anyway as the appointment was created successfully
+          }
+        }
+      }
       
       // Refresh data
       await loadPatientsWithAppointments()
@@ -182,9 +245,17 @@ const PatientControlPage = () => {
       setSelectedPatientForNotes(null)
       setSelectedAppointmentForNotes(null)
       setDoctorNotes('')
-    } catch (error) {
+      setAppointmentStatus('COMPLETED')
+      setScheduleFollowUp(false)
+      setFollowUpInNotesData({
+        appointmentDate: '',
+        appointmentTime: '',
+        reason: 'Tái khám theo yêu cầu của bác sĩ'
+      })
+      setError('') // Clear any previous errors
+    } catch (error: any) {
       console.error('Error saving notes:', error)
-      setError('Failed to save notes')
+      setError(error.message || 'Failed to save notes')
     } finally {
       setSavingNotes(false)
     }
@@ -202,6 +273,12 @@ const PatientControlPage = () => {
       console.error('Error updating appointment status:', error)
       setError('Failed to update appointment status')
     }
+  }
+
+  // Patient detail function
+  const handleViewPatientDetail = (patient: PatientWithAppointments) => {
+    setSelectedPatientForDetail(patient)
+    setShowPatientDetailModal(true)
   }
 
   if (loading) {
@@ -256,7 +333,7 @@ const PatientControlPage = () => {
             <select
               className="pl-10 pr-8 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 bg-white"
               value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
+              onChange={(e) => setSelectedStatus(e.target.value as 'CONFIRMED' | 'PAYMENT_REQUESTED' | 'PAID' | 'COMPLETED' | 'NO_SHOW')}
             >
               <option value="">All Patients</option>
               <option value="upcoming">With Upcoming Appointments</option>
@@ -386,41 +463,22 @@ const PatientControlPage = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex space-x-2">
-                      <button 
-                        className="text-blue-600 hover:text-blue-800"
-                        title="View patient details"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button 
-                        className="text-purple-600 hover:text-purple-800"
-                        title="View appointment history"
-                      >
-                        <Calendar className="w-4 h-4" />
-                      </button>
-                      <button 
-                        className="text-orange-600 hover:text-orange-800"
-                        title="Medical records"
-                      >
-                        <FileText className="w-4 h-4" />
-                      </button>
-                      
                       {/* Doctor-specific actions */}
                       {getStoredUserInfo()?.role === 'DOCTOR' && patient.appointments.length > 0 && (
                         <>
+                          <button 
+                            className="text-blue-600 hover:text-blue-800"
+                            title="View patient details"
+                            onClick={() => handleViewPatientDetail(patient)}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
                           <button 
                             className="text-cyan-600 hover:text-cyan-800"
                             title="Add examination notes"
                             onClick={() => handleOpenNotesModal(patient, patient.appointments[0])}
                           >
                             <Edit className="w-4 h-4" />
-                          </button>
-                          <button 
-                            className="text-green-600 hover:text-green-800"
-                            title="Mark as completed"
-                            onClick={() => handleUpdateAppointmentStatus(patient.appointments[0].id, 'COMPLETED')}
-                          >
-                            <CheckCircle className="w-4 h-4" />
                           </button>
                           <button 
                             className="text-red-600 hover:text-red-800"
@@ -490,7 +548,15 @@ const PatientControlPage = () => {
                   Examination Notes for {selectedPatientForNotes.fullName}
                 </h3>
                 <button
-                  onClick={() => setShowNotesModal(false)}
+                  onClick={() => {
+                    setShowNotesModal(false)
+                    setScheduleFollowUp(false)
+                    setFollowUpInNotesData({
+                      appointmentDate: '',
+                      appointmentTime: '',
+                      reason: 'Tái khám theo yêu cầu của bác sĩ'
+                    })
+                  }}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-6 h-6" />
@@ -511,21 +577,125 @@ const PatientControlPage = () => {
               </div>
               
               <div className="space-y-3">
-                <label className="block text-sm font-medium text-gray-700">
-                  Examination Notes:
-                </label>
-                <textarea
-                  rows={6}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter examination notes, diagnosis, treatment plan, etc..."
-                  value={doctorNotes}
-                  onChange={(e) => setDoctorNotes(e.target.value)}
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Appointment Status:
+                  </label>
+                  <select
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={appointmentStatus}
+                    onChange={(e) => setAppointmentStatus(e.target.value as 'COMPLETED' | 'NO_SHOW')}
+                  >
+                    <option value="COMPLETED">Completed</option>
+                    <option value="NO_SHOW">No Show</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Examination Notes:
+                  </label>
+                  <textarea
+                    rows={6}
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter examination notes, diagnosis, treatment plan, etc..."
+                    value={doctorNotes}
+                    onChange={(e) => setDoctorNotes(e.target.value)}
+                  />
+                </div>
+                
+                {/* Follow-up Checkbox */}
+                <div className="border-t pt-3">
+                  <div className="flex items-center">
+                    <input
+                      id="schedule-followup"
+                      type="checkbox"
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      checked={scheduleFollowUp}
+                      onChange={(e) => setScheduleFollowUp(e.target.checked)}
+                    />
+                    <label htmlFor="schedule-followup" className="ml-2 block text-sm font-medium text-gray-700">
+                      Lên lịch tái khám cho bệnh nhân
+                    </label>
+                  </div>
+                </div>
+                
+                {/* Follow-up Form (shown when checkbox is checked) */}
+                {scheduleFollowUp && (
+                  <div className="bg-indigo-50 p-4 rounded-lg space-y-4">
+                    <h5 className="text-sm font-medium text-indigo-900">Thông tin tái khám</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          Ngày tái khám <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          value={followUpInNotesData.appointmentDate}
+                          min={new Date().toISOString().split('T')[0]}
+                          onChange={(e) => setFollowUpInNotesData({...followUpInNotesData, appointmentDate: e.target.value})}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          Giờ tái khám <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          value={followUpInNotesData.appointmentTime}
+                          onChange={(e) => setFollowUpInNotesData({...followUpInNotesData, appointmentTime: e.target.value})}
+                          required
+                        >
+                          <option value="">Chọn giờ khám</option>
+                          <option value="08:00">08:00</option>
+                          <option value="08:30">08:30</option>
+                          <option value="09:00">09:00</option>
+                          <option value="09:30">09:30</option>
+                          <option value="10:00">10:00</option>
+                          <option value="10:30">10:30</option>
+                          <option value="11:00">11:00</option>
+                          <option value="11:30">11:30</option>
+                          <option value="13:30">13:30</option>
+                          <option value="14:00">14:00</option>
+                          <option value="14:30">14:30</option>
+                          <option value="15:00">15:00</option>
+                          <option value="15:30">15:30</option>
+                          <option value="16:00">16:00</option>
+                          <option value="16:30">16:30</option>
+                          <option value="17:00">17:00</option>
+                        </select>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Lý do tái khám
+                      </label>
+                      <textarea
+                        rows={3}
+                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="Nhập lý do tái khám..."
+                        value={followUpInNotesData.reason}
+                        onChange={(e) => setFollowUpInNotesData({...followUpInNotesData, reason: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div className="mt-6 flex justify-end space-x-3">
                 <button
-                  onClick={() => setShowNotesModal(false)}
+                  onClick={() => {
+                    setShowNotesModal(false)
+                    setScheduleFollowUp(false)
+                    setFollowUpInNotesData({
+                      appointmentDate: '',
+                      appointmentTime: '',
+                      reason: 'Tái khám theo yêu cầu của bác sĩ'
+                    })
+                  }}
                   disabled={savingNotes}
                   className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
                 >
@@ -533,13 +703,163 @@ const PatientControlPage = () => {
                 </button>
                 <button
                   onClick={handleSaveNotes}
-                  disabled={savingNotes}
+                  disabled={savingNotes || (scheduleFollowUp && (!followUpInNotesData.appointmentDate || !followUpInNotesData.appointmentTime))}
                   className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                 >
                   {savingNotes && (
                     <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                   )}
-                  {savingNotes ? 'Saving...' : 'Save Notes'}
+                  {savingNotes ? 'Saving...' : (scheduleFollowUp ? 'Save Notes & Schedule Follow-up' : 'Save Notes')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+
+      {/* Patient Detail Modal */}
+      {showPatientDetailModal && selectedPatientForDetail && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-medium text-gray-900">
+                  Chi tiết bệnh nhân: {selectedPatientForDetail.fullName}
+                </h3>
+                <button
+                  onClick={() => setShowPatientDetailModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Patient Basic Info */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-gray-900 mb-3">Thông tin cơ bản</h4>
+                  <div className="space-y-2">
+                    <p className="text-sm">
+                      <strong className="text-gray-700">Họ tên:</strong> {selectedPatientForDetail.fullName}
+                    </p>
+                    <p className="text-sm">
+                      <strong className="text-gray-700">Email:</strong> {selectedPatientForDetail.email}
+                    </p>
+                    <p className="text-sm">
+                      <strong className="text-gray-700">Số điện thoại:</strong> {selectedPatientForDetail.phone}
+                    </p>
+                    {selectedPatientForDetail.user && (
+                      <>
+                        <p className="text-sm">
+                          <strong className="text-gray-700">Username:</strong> @{selectedPatientForDetail.user.username}
+                        </p>
+                        <p className="text-sm">
+                          <strong className="text-gray-700">Giới tính:</strong> {selectedPatientForDetail.user.gender}
+                        </p>
+                        {selectedPatientForDetail.user.birth && (
+                          <p className="text-sm">
+                            <strong className="text-gray-700">Ngày sinh:</strong> {formatDate(selectedPatientForDetail.user.birth)}
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Appointment Statistics */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-gray-900 mb-3">Thống kê lịch hẹn</h4>
+                  <div className="space-y-2">
+                    <p className="text-sm">
+                      <strong className="text-gray-700">Tổng số lịch hẹn:</strong> {selectedPatientForDetail.totalAppointments}
+                    </p>
+                    <p className="text-sm">
+                      <strong className="text-gray-700">Lịch hẹn đã xác nhận:</strong> {selectedPatientForDetail.confirmedAppointments}
+                    </p>
+                    <p className="text-sm">
+                      <strong className="text-gray-700">Lần khám gần nhất:</strong> {formatDate(selectedPatientForDetail.lastAppointment)}
+                    </p>
+                    {selectedPatientForDetail.nextAppointment && (
+                      <p className="text-sm">
+                        <strong className="text-gray-700">Lịch hẹn tiếp theo:</strong> {formatDate(selectedPatientForDetail.nextAppointment)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Appointment History */}
+              <div className="mt-6">
+                <h4 className="font-medium text-gray-900 mb-3">Lịch sử khám bệnh</h4>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Ngày khám
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Giờ
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Khoa
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Trạng thái
+                        </th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Ghi chú
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {selectedPatientForDetail.appointments.map((appointment) => (
+                        <tr key={appointment.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {formatDate(appointment.appointmentDate)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {appointment.appointmentTime}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {appointment.department}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              appointment.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                              appointment.status === 'CONFIRMED' ? 'bg-blue-100 text-blue-800' :
+                              appointment.status === 'PAYMENT_REQUESTED' ? 'bg-orange-100 text-orange-800' :
+                              appointment.status === 'PAID' ? 'bg-purple-100 text-purple-800' :
+                              appointment.status === 'NO_SHOW' ? 'bg-red-100 text-red-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {appointment.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {appointment.notes ? (
+                              <div className="max-w-xs truncate" title={appointment.notes}>
+                                {appointment.notes}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">Chưa có ghi chú</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => setShowPatientDetailModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  Đóng
                 </button>
               </div>
             </div>

@@ -331,10 +331,10 @@ public class AppointmentController {
         try {
             Optional<Appointment> appointment = appointmentService.getAppointmentById(id);
             if (appointment.isPresent()) {
-                // Implementation depends on your business logic
-                // You might want to implement a soft delete instead
+                // Actually delete the appointment
+                appointmentService.deleteAppointment(id);
                 Map<String, String> response = new HashMap<>();
-                response.put("message", "Appointment deletion not implemented for data integrity");
+                response.put("message", "Appointment deleted successfully");
                 return ResponseEntity.ok(response);
             } else {
                 return ResponseEntity.notFound().build();

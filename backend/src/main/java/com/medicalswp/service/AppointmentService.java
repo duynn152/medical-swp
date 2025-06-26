@@ -441,4 +441,19 @@ public class AppointmentService {
         // Get appointments where this doctor is assigned
         return appointmentRepository.findByDoctor(doctor);
     }
+
+    /**
+     * Xóa appointment vĩnh viễn
+     */
+    public void deleteAppointment(Long id) {
+        logger.info("Permanently deleting appointment with ID: {}", id);
+        
+        Optional<Appointment> appointmentOptional = appointmentRepository.findById(id);
+        if (!appointmentOptional.isPresent()) {
+            throw new IllegalArgumentException("Appointment not found with ID: " + id);
+        }
+        
+        appointmentRepository.deleteById(id);
+        logger.info("Appointment with ID {} has been permanently deleted", id);
+    }
 } 

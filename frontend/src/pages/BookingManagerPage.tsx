@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Calendar, Clock, User, Phone, Mail, Building2, Check, X, Eye, Search, AlertCircle, CheckCircle, XCircle, Calendar as CalendarIcon, TrendingUp, UserCheck, Trash2 } from 'lucide-react'
+import { Calendar, Clock, User, Phone, Mail, Building2, Check, X, Eye, Search, AlertCircle, CheckCircle, XCircle, Calendar as CalendarIcon, TrendingUp, UserCheck, Trash2, Edit } from 'lucide-react'
 import { apiService, DepartmentInfo } from '../utils/api'
 import toast from 'react-hot-toast'
 
@@ -63,6 +63,10 @@ const BookingManagerPage = () => {
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
 
+  // Bulk permanent delete states
+  const [showBulkPermanentDeleteConfirm, setShowBulkPermanentDeleteConfirm] = useState(false)
+  const [bulkPermanentDeleting, setBulkPermanentDeleting] = useState(false)
+
   // Doctor selection modal states
   const [showDoctorModal, setShowDoctorModal] = useState(false)
   const [selectedAppointmentForConfirm, setSelectedAppointmentForConfirm] = useState<Appointment | null>(null)
@@ -77,6 +81,20 @@ const BookingManagerPage = () => {
   const [selectedAppointmentForPayment, setSelectedAppointmentForPayment] = useState<Appointment | null>(null)
   const [paymentAmount, setPaymentAmount] = useState<string>('')
   const [requestingPayment, setRequestingPayment] = useState(false)
+
+  // Edit appointment modal states
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [selectedAppointmentForEdit, setSelectedAppointmentForEdit] = useState<Appointment | null>(null)
+  const [editFormData, setEditFormData] = useState({
+    fullName: '',
+    phone: '',
+    email: '',
+    appointmentDate: '',
+    appointmentTime: '',
+    department: '',
+    reason: ''
+  })
+  const [updatingAppointment, setUpdatingAppointment] = useState(false)
 
   // Get department display name from code
   const getDepartmentDisplayName = (departmentCode: string) => {
@@ -332,6 +350,96 @@ const BookingManagerPage = () => {
     }
   }
 
+  // Edit appointment functions
+  const handleEditAppointment = (appointment: Appointment) => {
+    setSelectedAppointmentForEdit(appointment)
+    setEditFormData({
+      fullName: appointment.fullName,
+      phone: appointment.phone,
+      email: appointment.email,
+      appointmentDate: appointment.appointmentDate,
+      appointmentTime: appointment.appointmentTime,
+      department: appointment.department,
+      reason: appointment.reason || ''
+    })
+    setShowEditModal(true)
+  }
+
+  const handleUpdateAppointment = async () => {
+    if (!selectedAppointmentForEdit) return
+
+    // Validate required fields
+    if (!editFormData.fullName || !editFormData.phone || !editFormData.appointmentDate || !editFormData.appointmentTime || !editFormData.department) {
+      toast.error('Vui lòng điền đầy đủ thông tin bắt buộc')
+      return
+    }
+
+    // Validate date format and value
+    const appointmentDate = new Date(editFormData.appointmentDate)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    if (appointmentDate < today) {
+      toast.error('Ngày khám không thể là ngày đã qua')
+      return
+    }
+
+    setUpdatingAppointment(true)
+    try {
+      // Check time slot availability if date/time/department changed
+      const hasDateTimeChange = 
+        editFormData.appointmentDate !== selectedAppointmentForEdit.appointmentDate ||
+        editFormData.appointmentTime !== selectedAppointmentForEdit.appointmentTime ||
+        editFormData.department !== selectedAppointmentForEdit.department
+
+      if (hasDateTimeChange) {
+        const availability = await apiService.checkTimeSlotAvailability(
+          editFormData.appointmentDate,
+          editFormData.appointmentTime,
+          editFormData.department
+        )
+        
+        if (!availability.available) {
+          toast.error(availability.message)
+          return
+        }
+      }
+
+      // Update appointment
+      await apiService.updateAppointment(selectedAppointmentForEdit.id, {
+        fullName: editFormData.fullName,
+        phone: editFormData.phone,
+        email: editFormData.email,
+        appointmentDate: editFormData.appointmentDate,
+        appointmentTime: editFormData.appointmentTime,
+        department: editFormData.department,
+        reason: editFormData.reason || undefined
+      })
+
+      await fetchAppointments()
+      await fetchStats()
+      
+      setShowEditModal(false)
+      setSelectedAppointmentForEdit(null)
+      setEditFormData({
+        fullName: '',
+        phone: '',
+        email: '',
+        appointmentDate: '',
+        appointmentTime: '',
+        department: '',
+        reason: ''
+      })
+      
+      toast.success('Lịch hẹn đã được cập nhật thành công')
+    } catch (error: any) {
+      console.error('Error updating appointment:', error)
+      toast.error(error.message || 'Không thể cập nhật lịch hẹn')
+    } finally {
+      setUpdatingAppointment(false)
+    }
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('vi-VN')
   }
@@ -408,6 +516,57 @@ const BookingManagerPage = () => {
       toast.error('Không thể xóa một số lịch hẹn')
     } finally {
       setBulkDeleting(false)
+    }
+  }
+
+  // Bulk permanent delete functions
+  const handleBulkPermanentDelete = async () => {
+    if (selectedAppointments.size === 0) {
+      toast.error('Vui lòng chọn ít nhất một lịch hẹn để xóa')
+      return
+    }
+    setShowBulkPermanentDeleteConfirm(true)
+  }
+
+  const confirmBulkPermanentDelete = async () => {
+    setBulkPermanentDeleting(true)
+    try {
+      console.log('Starting permanent delete for appointments:', Array.from(selectedAppointments))
+      
+      const deletePromises = Array.from(selectedAppointments).map(async (id) => {
+        console.log(`Deleting appointment ${id}...`)
+        try {
+          await apiService.deleteAppointment(id)
+          console.log(`Successfully deleted appointment ${id}`)
+          return id
+        } catch (error) {
+          console.error(`Failed to delete appointment ${id}:`, error)
+          throw error
+        }
+      })
+      
+      await Promise.all(deletePromises)
+      
+      console.log('All appointments deleted, refreshing data...')
+      
+      // Force refresh by clearing appointments first
+      setAppointments([])
+      setFilteredAppointments([])
+      
+      await fetchAppointments()
+      await fetchStats()
+      
+      setSelectedAppointments(new Set())
+      setSelectAll(false)
+      setShowBulkPermanentDeleteConfirm(false)
+      
+      toast.success(`Đã xóa vĩnh viễn ${selectedAppointments.size} lịch hẹn`)
+      console.log('Data refresh completed')
+    } catch (error) {
+      console.error('Error permanently deleting appointments:', error)
+      toast.error('Không thể xóa vĩnh viễn một số lịch hẹn')
+    } finally {
+      setBulkPermanentDeleting(false)
     }
   }
 
@@ -561,6 +720,13 @@ const BookingManagerPage = () => {
                 >
                   <Trash2 className="w-4 h-4 mr-1" />
                   Hủy lịch hẹn
+                </button>
+                <button
+                  onClick={handleBulkPermanentDelete}
+                  className="flex items-center px-3 py-1 bg-gray-800 text-white rounded-md hover:bg-gray-900 text-sm"
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Delete
                 </button>
               </div>
             </div>
@@ -717,6 +883,14 @@ const BookingManagerPage = () => {
                           title="Xem chi tiết"
                         >
                           <Eye className="w-4 h-4" />
+                        </button>
+                        
+                        <button
+                          onClick={() => handleEditAppointment(appointment)}
+                          className="text-purple-600 hover:text-purple-900"
+                          title="Chỉnh sửa"
+                        >
+                          <Edit className="w-4 h-4" />
                         </button>
                         
                         {appointment.status === 'PENDING' && (
@@ -1110,6 +1284,225 @@ const BookingManagerPage = () => {
                     <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                   )}
                   {bulkDeleting ? 'Đang xử lý...' : 'Xóa lịch hẹn'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Appointment Modal */}
+      {showEditModal && selectedAppointmentForEdit && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Chỉnh sửa lịch hẹn #{selectedAppointmentForEdit.id}
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowEditModal(false)
+                    setSelectedAppointmentForEdit(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Họ tên <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      value={editFormData.fullName}
+                      onChange={(e) => setEditFormData({...editFormData, fullName: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Số điện thoại <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      value={editFormData.phone}
+                      onChange={(e) => setEditFormData({...editFormData, phone: e.target.value})}
+                      required
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    value={editFormData.email}
+                    onChange={(e) => setEditFormData({...editFormData, email: e.target.value})}
+                  />
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Ngày khám <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      value={editFormData.appointmentDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => setEditFormData({...editFormData, appointmentDate: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Giờ khám <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      value={editFormData.appointmentTime}
+                      onChange={(e) => setEditFormData({...editFormData, appointmentTime: e.target.value})}
+                      required
+                    >
+                      <option value="">Chọn giờ khám</option>
+                      <option value="08:00">08:00</option>
+                      <option value="08:30">08:30</option>
+                      <option value="09:00">09:00</option>
+                      <option value="09:30">09:30</option>
+                      <option value="10:00">10:00</option>
+                      <option value="10:30">10:30</option>
+                      <option value="11:00">11:00</option>
+                      <option value="11:30">11:30</option>
+                      <option value="13:30">13:30</option>
+                      <option value="14:00">14:00</option>
+                      <option value="14:30">14:30</option>
+                      <option value="15:00">15:00</option>
+                      <option value="15:30">15:30</option>
+                      <option value="16:00">16:00</option>
+                      <option value="16:30">16:30</option>
+                      <option value="17:00">17:00</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Khoa khám <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    value={editFormData.department}
+                    onChange={(e) => setEditFormData({...editFormData, department: e.target.value})}
+                    required
+                  >
+                    <option value="">Chọn khoa khám</option>
+                    {departments.map((dept) => (
+                      <option key={dept.code} value={dept.code}>
+                        {dept.departmentName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Lý do khám
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Nhập lý do khám bệnh..."
+                    value={editFormData.reason}
+                    onChange={(e) => setEditFormData({...editFormData, reason: e.target.value})}
+                  />
+                </div>
+              </div>
+              
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowEditModal(false)
+                    setSelectedAppointmentForEdit(null)
+                  }}
+                  disabled={updatingAppointment}
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handleUpdateAppointment}
+                  disabled={updatingAppointment || !editFormData.fullName || !editFormData.phone || !editFormData.appointmentDate || !editFormData.appointmentTime || !editFormData.department}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {updatingAppointment && (
+                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  )}
+                  {updatingAppointment ? 'Đang cập nhật...' : 'Cập nhật lịch hẹn'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Permanent Delete Confirm Modal */}
+      {showBulkPermanentDeleteConfirm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Xác nhận xóa vĩnh viễn
+                </h3>
+                <button
+                  onClick={() => setShowBulkPermanentDeleteConfirm(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="flex items-center text-red-600">
+                  <Trash2 className="w-6 h-6 mr-2" />
+                  <span className="font-medium">Cảnh báo: Hành động không thể hoàn tác!</span>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Bạn có chắc chắn muốn <strong>xóa vĩnh viễn</strong> {selectedAppointments.size} lịch hẹn đã chọn?
+                </p>
+                <p className="text-xs text-red-500">
+                  Dữ liệu sẽ bị xóa hoàn toàn khỏi hệ thống và không thể khôi phục.
+                </p>
+              </div>
+              
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowBulkPermanentDeleteConfirm(false)}
+                  disabled={bulkPermanentDeleting}
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={confirmBulkPermanentDelete}
+                  disabled={bulkPermanentDeleting}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {bulkPermanentDeleting && (
+                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  )}
+                  {bulkPermanentDeleting ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
                 </button>
               </div>
             </div>
