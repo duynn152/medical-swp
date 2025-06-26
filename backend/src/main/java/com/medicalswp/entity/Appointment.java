@@ -58,6 +58,17 @@ public class Appointment {
     @Column(nullable = false)
     private Boolean reminderSent = false;
     
+    // Payment related fields
+    private Boolean paymentRequested = false;
+    
+    private Boolean paymentCompleted = false;
+    
+    private Double paymentAmount;
+    
+    private LocalDateTime paymentRequestedAt;
+    
+    private LocalDateTime paymentCompletedAt;
+    
     // Reference to user if registered
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
@@ -222,12 +233,55 @@ public class Appointment {
         this.updatedAt = updatedAt;
     }
     
+    // Payment getters and setters
+    public Boolean getPaymentRequested() {
+        return paymentRequested;
+    }
+    
+    public void setPaymentRequested(Boolean paymentRequested) {
+        this.paymentRequested = paymentRequested;
+    }
+    
+    public Boolean getPaymentCompleted() {
+        return paymentCompleted;
+    }
+    
+    public void setPaymentCompleted(Boolean paymentCompleted) {
+        this.paymentCompleted = paymentCompleted;
+    }
+    
+    public Double getPaymentAmount() {
+        return paymentAmount;
+    }
+    
+    public void setPaymentAmount(Double paymentAmount) {
+        this.paymentAmount = paymentAmount;
+    }
+    
+    public LocalDateTime getPaymentRequestedAt() {
+        return paymentRequestedAt;
+    }
+    
+    public void setPaymentRequestedAt(LocalDateTime paymentRequestedAt) {
+        this.paymentRequestedAt = paymentRequestedAt;
+    }
+    
+    public LocalDateTime getPaymentCompletedAt() {
+        return paymentCompletedAt;
+    }
+    
+    public void setPaymentCompletedAt(LocalDateTime paymentCompletedAt) {
+        this.paymentCompletedAt = paymentCompletedAt;
+    }
+    
     public enum AppointmentStatus {
-        PENDING,      // Chờ xác nhận
-        CONFIRMED,    // Đã xác nhận
-        CANCELLED,    // Đã hủy
-        COMPLETED,    // Đã hoàn thành
-        NO_SHOW       // Không đến
+        PENDING,           // Chờ xác nhận
+        CONFIRMED,         // Đã xác nhận
+        PAYMENT_REQUESTED, // Yêu cầu thanh toán
+        PAID,              // Đã thanh toán
+        CANCELLED,         // Đã hủy
+        COMPLETED,         // Đã hoàn thành
+        NO_SHOW            // Không đến
     }
     
     // Department enum synchronized with User.MedicalSpecialty

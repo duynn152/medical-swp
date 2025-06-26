@@ -11,6 +11,7 @@ interface BlogPost {
   date?: string
   createdAt?: string
   category: string
+  
   status: 'PUBLISHED' | 'DRAFT' | 'ARCHIVED'
   featured: boolean
   readTime: string
@@ -180,7 +181,7 @@ const BlogDetailPage = () => {
           {blog.imageUrl && (
             <div className="aspect-video w-full">
               <img
-                src={blog.imageUrl}
+                src={blog.imageUrl.startsWith('http') ? blog.imageUrl : `http://localhost:8080/api${blog.imageUrl}`}
                 alt={blog.title}
                 className="w-full h-full object-cover"
                 onError={(e) => {

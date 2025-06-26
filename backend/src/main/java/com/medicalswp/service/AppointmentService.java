@@ -77,16 +77,34 @@ public class AppointmentService {
         
         Appointment appointment = appointmentOptional.get();
         
-        // Update fields
-        appointment.setFullName(appointmentDetails.getFullName());
-        appointment.setPhone(appointmentDetails.getPhone());
-        appointment.setEmail(appointmentDetails.getEmail());
-        appointment.setAppointmentDate(appointmentDetails.getAppointmentDate());
-        appointment.setAppointmentTime(appointmentDetails.getAppointmentTime());
-        appointment.setDepartment(appointmentDetails.getDepartment());
-        appointment.setReason(appointmentDetails.getReason());
-        appointment.setStatus(appointmentDetails.getStatus());
-        appointment.setNotes(appointmentDetails.getNotes());
+        // Update fields only if they are not null (partial update support)
+        if (appointmentDetails.getFullName() != null) {
+            appointment.setFullName(appointmentDetails.getFullName());
+        }
+        if (appointmentDetails.getPhone() != null) {
+            appointment.setPhone(appointmentDetails.getPhone());
+        }
+        if (appointmentDetails.getEmail() != null) {
+            appointment.setEmail(appointmentDetails.getEmail());
+        }
+        if (appointmentDetails.getAppointmentDate() != null) {
+            appointment.setAppointmentDate(appointmentDetails.getAppointmentDate());
+        }
+        if (appointmentDetails.getAppointmentTime() != null) {
+            appointment.setAppointmentTime(appointmentDetails.getAppointmentTime());
+        }
+        if (appointmentDetails.getDepartment() != null) {
+            appointment.setDepartment(appointmentDetails.getDepartment());
+        }
+        if (appointmentDetails.getReason() != null) {
+            appointment.setReason(appointmentDetails.getReason());
+        }
+        if (appointmentDetails.getStatus() != null) {
+            appointment.setStatus(appointmentDetails.getStatus());
+        }
+        if (appointmentDetails.getNotes() != null) {
+            appointment.setNotes(appointmentDetails.getNotes());
+        }
         
         if (appointmentDetails.getDoctor() != null) {
             appointment.setDoctor(appointmentDetails.getDoctor());
@@ -186,7 +204,7 @@ public class AppointmentService {
      * Lấy tất cả appointments
      */
     public List<Appointment> getAllAppointments() {
-        return appointmentRepository.findAll();
+        return appointmentRepository.findAllWithUserAndDoctor();
     }
     
     /**
@@ -200,7 +218,7 @@ public class AppointmentService {
      * Lấy appointments theo status
      */
     public List<Appointment> getAppointmentsByStatus(Appointment.AppointmentStatus status) {
-        return appointmentRepository.findByStatus(status);
+        return appointmentRepository.findByStatusWithUserAndDoctor(status);
     }
     
     /**
@@ -351,5 +369,76 @@ public class AppointmentService {
         
         public Long getTodaysAppointments() { return todaysAppointments; }
         public void setTodaysAppointments(Long todaysAppointments) { this.todaysAppointments = todaysAppointments; }
+    }
+    
+    /**
+     * Yêu cầu thanh toán cho appointment
+     */
+    public Appointment requestPayment(Long id, Double amount) {
+        logger.info("Requesting payment for appointment with ID: {} and amount: {}", id, amount);
+        
+        Optional<Appointment> appointmentOptional = appointmentRepository.findById(id);
+        if (!appointmentOptional.isPresent()) {
+            throw new IllegalArgumentException("Appointment not found with ID: " + id);
+        }
+        
+        Appointment appointment = appointmentOptional.get();
+        
+        // Validate appointment status
+        if (appointment.getStatus() != Appointment.AppointmentStatus.CONFIRMED && 
+            appointment.getStatus() != Appointment.AppointmentStatus.PAYMENT_REQUESTED) {
+            throw new IllegalArgumentException("Only confirmed appointments can request payment");
+        }
+        
+        // Validate amount
+        if (amount == null || amount <= 0) {
+            throw new IllegalArgumentException("Payment amount must be greater than 0");
+        }
+        
+        // Update appointment
+        appointment.setStatus(Appointment.AppointmentStatus.PAYMENT_REQUESTED);
+        appointment.setPaymentRequested(true);
+        appointment.setPaymentAmount(amount);
+        appointment.setPaymentRequestedAt(java.time.LocalDateTime.now());
+        
+        Appointment updatedAppointment = appointmentRepository.save(appointment);
+        
+        // Send payment request email
+        if (appointment.getEmail() != null && !appointment.getEmail().isEmpty()) {
+            sendPaymentRequestEmailAsync(appointment);
+        }
+        
+        logger.info("Payment requested/updated successfully for appointment: {} with amount: {}", updatedAppointment.getId(), amount);
+        return updatedAppointment;
+    }
+    
+    /**
+     * Gửi email yêu cầu thanh toán (async)
+     */
+    @Async
+    public void sendPaymentRequestEmailAsync(Appointment appointment) {
+        if (appointment.getEmail() != null && !appointment.getEmail().isEmpty()) {
+            emailService.sendPaymentRequest(appointment);
+            logger.info("Payment request email sent for appointment: {}", appointment.getId());
+        }
+    }
+    
+    /**
+     * Lấy appointments theo doctor username (for DOCTOR role)
+     */
+    public List<Appointment> getAppointmentsByDoctorUsername(String username) {
+        // First find the doctor user by username
+        Optional<User> doctorOptional = userRepository.findByUsername(username);
+        if (!doctorOptional.isPresent()) {
+            throw new IllegalArgumentException("Doctor not found with username: " + username);
+        }
+        
+        User doctor = doctorOptional.get();
+        if (doctor.getRole() != User.Role.DOCTOR) {
+            throw new IllegalArgumentException("User is not a doctor: " + username);
+        }
+        
+        // Get appointments where this doctor is assigned
+        return appointmentRepository.findByDoctor(doctor);
     }
 } 

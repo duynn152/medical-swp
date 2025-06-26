@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
@@ -227,7 +228,7 @@ public class AppointmentController {
      */
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
-    public ResponseEntity<?> updateAppointment(@PathVariable Long id, @Valid @RequestBody Appointment appointmentDetails) {
+    public ResponseEntity<?> updateAppointment(@PathVariable Long id, @RequestBody Appointment appointmentDetails) {
         try {
             Appointment updatedAppointment = appointmentService.updateAppointment(id, appointmentDetails);
             return ResponseEntity.ok(updatedAppointment);
@@ -473,6 +474,51 @@ public class AppointmentController {
             return ResponseEntity.ok(departments);
         } catch (Exception e) {
             logger.error("Error fetching departments", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * ADMIN: Request payment for appointment
+     */
+    @PutMapping("/{id}/request-payment")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('STAFF')")
+    public ResponseEntity<?> requestPayment(@PathVariable Long id, @RequestBody Map<String, Object> request) {
+        try {
+            Double amount = null;
+            if (request.containsKey("amount")) {
+                amount = Double.valueOf(request.get("amount").toString());
+            }
+            
+            Appointment appointmentWithPaymentRequest = appointmentService.requestPayment(id, amount);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Yêu cầu thanh toán đã được gửi/cập nhật");
+            response.put("appointment", appointmentWithPaymentRequest);
+            
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            logger.error("Error requesting payment for appointment: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * DOCTOR: Get appointments for current doctor's patients
+     */
+    @GetMapping("/my-patients")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<List<Appointment>> getMyPatientsAppointments(Authentication authentication) {
+        try {
+            String username = authentication.getName();
+            List<Appointment> appointments = appointmentService.getAppointmentsByDoctorUsername(username);
+            return ResponseEntity.ok(appointments);
+        } catch (Exception e) {
+            logger.error("Error fetching doctor's patient appointments", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

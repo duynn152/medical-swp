@@ -17,6 +17,10 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     // Find appointments by status
     List<Appointment> findByStatus(Appointment.AppointmentStatus status);
     
+    // Find appointments by status with user and doctor data eagerly loaded
+    @Query("SELECT a FROM Appointment a LEFT JOIN FETCH a.user LEFT JOIN FETCH a.doctor WHERE a.status = :status")
+    List<Appointment> findByStatusWithUserAndDoctor(@Param("status") Appointment.AppointmentStatus status);
+    
     // Find appointments by date
     List<Appointment> findByAppointmentDate(LocalDate date);
     
@@ -78,4 +82,8 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     // Count appointments for today
     @Query("SELECT COUNT(a) FROM Appointment a WHERE a.appointmentDate = :today")
     Long countTodaysAppointments(@Param("today") LocalDate today);
+    
+    // Find all appointments with user and doctor data eagerly loaded
+    @Query("SELECT a FROM Appointment a LEFT JOIN FETCH a.user LEFT JOIN FETCH a.doctor")
+    List<Appointment> findAllWithUserAndDoctor();
 } 

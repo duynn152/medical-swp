@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Calendar, Clock, User, Phone, Mail, Building2, Check, X, Eye, Search, AlertCircle, CheckCircle, XCircle, Calendar as CalendarIcon, TrendingUp, UserCheck } from 'lucide-react'
+import { Calendar, Clock, User, Phone, Mail, Building2, Check, X, Eye, Search, AlertCircle, CheckCircle, XCircle, Calendar as CalendarIcon, TrendingUp, UserCheck, Trash2 } from 'lucide-react'
 import { apiService, DepartmentInfo } from '../utils/api'
 import toast from 'react-hot-toast'
 
@@ -12,10 +12,14 @@ interface Appointment {
   appointmentTime: string
   department: string
   reason?: string
-  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
+  status: 'PENDING' | 'CONFIRMED' | 'PAYMENT_REQUESTED' | 'PAID' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
   notes?: string
   emailSent: boolean
   reminderSent: boolean
+  paymentRequested: boolean
+  paymentCompleted: boolean
+  paymentRequestedAt?: string
+  paymentCompletedAt?: string
   createdAt: string
   updatedAt: string
   doctor?: {
@@ -53,6 +57,12 @@ const BookingManagerPage = () => {
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
 
+  // Bulk selection states
+  const [selectedAppointments, setSelectedAppointments] = useState<Set<number>>(new Set())
+  const [selectAll, setSelectAll] = useState(false)
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+
   // Doctor selection modal states
   const [showDoctorModal, setShowDoctorModal] = useState(false)
   const [selectedAppointmentForConfirm, setSelectedAppointmentForConfirm] = useState<Appointment | null>(null)
@@ -61,6 +71,12 @@ const BookingManagerPage = () => {
   const [confirmingWithDoctor, setConfirmingWithDoctor] = useState(false)
   const [specialties, setSpecialties] = useState<Array<{code: string, displayName: string}>>([])
   const [departments, setDepartments] = useState<DepartmentInfo[]>([])
+
+  // Payment request modal states
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [selectedAppointmentForPayment, setSelectedAppointmentForPayment] = useState<Appointment | null>(null)
+  const [paymentAmount, setPaymentAmount] = useState<string>('')
+  const [requestingPayment, setRequestingPayment] = useState(false)
 
   // Get department display name from code
   const getDepartmentDisplayName = (departmentCode: string) => {
@@ -81,6 +97,8 @@ const BookingManagerPage = () => {
   const statusColors = {
     PENDING: 'bg-yellow-100 text-yellow-800',
     CONFIRMED: 'bg-blue-100 text-blue-800',
+    PAYMENT_REQUESTED: 'bg-orange-100 text-orange-800',
+    PAID: 'bg-purple-100 text-purple-800',
     COMPLETED: 'bg-green-100 text-green-800',
     CANCELLED: 'bg-red-100 text-red-800',
     NO_SHOW: 'bg-gray-100 text-gray-800'
@@ -89,6 +107,8 @@ const BookingManagerPage = () => {
   const statusIcons = {
     PENDING: AlertCircle,
     CONFIRMED: CheckCircle,
+    PAYMENT_REQUESTED: TrendingUp,
+    PAID: Check,
     COMPLETED: Check,
     CANCELLED: XCircle,
     NO_SHOW: X
@@ -97,6 +117,8 @@ const BookingManagerPage = () => {
   const statusLabels = {
     PENDING: 'Chờ xác nhận',
     CONFIRMED: 'Đã xác nhận',
+    PAYMENT_REQUESTED: 'Yêu cầu thanh toán',
+    PAID: 'Đã thanh toán',
     COMPLETED: 'Đã hoàn thành',
     CANCELLED: 'Đã hủy',
     NO_SHOW: 'Không đến'
@@ -241,18 +263,72 @@ const BookingManagerPage = () => {
 
   const updateAppointmentStatus = async (id: number, status: string, reason?: string) => {
     try {
+      // Handle status updates through appropriate API calls
       if (status === 'CONFIRMED') {
         await apiService.confirmAppointment(id)
       } else if (status === 'CANCELLED') {
         await apiService.cancelAppointment(id, reason || 'Cancelled by staff')
+      } else {
+        // For other statuses, use the updateAppointment API
+        await apiService.updateAppointment(id, { 
+          status: status as 'PENDING' | 'CONFIRMED' | 'PAYMENT_REQUESTED' | 'PAID' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
+        })
       }
       
       await fetchAppointments()
       await fetchStats()
-      toast.success(`Lịch hẹn đã được ${status === 'CONFIRMED' ? 'xác nhận' : 'hủy'}`)
+      
+      const statusLabelsMap = {
+        'PENDING': 'chờ xác nhận',
+        'CONFIRMED': 'xác nhận',
+        'PAYMENT_REQUESTED': 'yêu cầu thanh toán',
+        'PAID': 'đã thanh toán',
+        'COMPLETED': 'hoàn thành',
+        'CANCELLED': 'hủy',
+        'NO_SHOW': 'không đến'
+      }
+      
+      toast.success(`Lịch hẹn đã được cập nhật thành ${statusLabelsMap[status as keyof typeof statusLabelsMap] || status}`)
     } catch (error) {
       console.error('Error updating appointment status:', error)
       toast.error('Không thể cập nhật trạng thái lịch hẹn')
+    }
+  }
+
+  const handleRequestPayment = async (appointment: Appointment) => {
+    setSelectedAppointmentForPayment(appointment)
+    setPaymentAmount('')
+    setShowPaymentModal(true)
+  }
+
+  const handlePaymentRequest = async () => {
+    if (!selectedAppointmentForPayment || !paymentAmount) {
+      toast.error('Vui lòng nhập số tiền thanh toán')
+      return
+    }
+
+    const amount = parseFloat(paymentAmount)
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Số tiền phải lớn hơn 0')
+      return
+    }
+
+    setRequestingPayment(true)
+    try {
+      await apiService.requestPayment(selectedAppointmentForPayment.id, amount)
+      await fetchAppointments()
+      await fetchStats()
+      
+      setShowPaymentModal(false)
+      setSelectedAppointmentForPayment(null)
+      setPaymentAmount('')
+      
+      toast.success('Yêu cầu thanh toán đã được gửi')
+    } catch (error) {
+      console.error('Error requesting payment:', error)
+      toast.error('Không thể gửi yêu cầu thanh toán')
+    } finally {
+      setRequestingPayment(false)
     }
   }
 
@@ -278,6 +354,68 @@ const BookingManagerPage = () => {
     const IconComponent = statusIcons[status as keyof typeof statusIcons]
     return IconComponent ? <IconComponent className="w-4 h-4" /> : null
   }
+
+  // Handle bulk selection
+  const handleSelectAll = () => {
+    if (selectAll) {
+      setSelectedAppointments(new Set())
+      setSelectAll(false)
+    } else {
+      const allIds = new Set(filteredAppointments.map(apt => apt.id))
+      setSelectedAppointments(allIds)
+      setSelectAll(true)
+    }
+  }
+
+  const handleSelectAppointment = (id: number) => {
+    const newSelected = new Set(selectedAppointments)
+    if (newSelected.has(id)) {
+      newSelected.delete(id)
+    } else {
+      newSelected.add(id)
+    }
+    setSelectedAppointments(newSelected)
+    setSelectAll(newSelected.size === filteredAppointments.length && filteredAppointments.length > 0)
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedAppointments.size === 0) {
+      toast.error('Vui lòng chọn ít nhất một lịch hẹn để xóa')
+      return
+    }
+    setShowBulkDeleteConfirm(true)
+  }
+
+  const confirmBulkDelete = async () => {
+    setBulkDeleting(true)
+    try {
+      const deletePromises = Array.from(selectedAppointments).map(id => 
+        apiService.cancelAppointment(id, 'Bulk cancelled by admin')
+      )
+      
+      await Promise.all(deletePromises)
+      
+      await fetchAppointments()
+      await fetchStats()
+      
+      setSelectedAppointments(new Set())
+      setSelectAll(false)
+      setShowBulkDeleteConfirm(false)
+      
+      toast.success(`Đã hủy ${selectedAppointments.size} lịch hẹn`)
+    } catch (error) {
+      console.error('Error bulk deleting appointments:', error)
+      toast.error('Không thể xóa một số lịch hẹn')
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
+  // Reset selection when filtered appointments change
+  useEffect(() => {
+    setSelectedAppointments(new Set())
+    setSelectAll(false)
+  }, [filteredAppointments])
 
   return (
     <div className="space-y-6">
@@ -364,36 +502,69 @@ const BookingManagerPage = () => {
         </div>
       )}
 
-      {/* Filters */}
+      {/* Filters and Bulk Actions */}
       <div className="bg-white p-4 rounded-lg shadow border">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Tìm kiếm theo tên, số điện thoại, email, khoa..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm theo tên, số điện thoại, email, khoa..."
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+            
+            <div className="sm:w-48">
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="">Tất cả trạng thái</option>
+                <option value="PENDING">Chờ xác nhận</option>
+                <option value="CONFIRMED">Đã xác nhận</option>
+                <option value="PAYMENT_REQUESTED">Yêu cầu thanh toán</option>
+                <option value="PAID">Đã thanh toán</option>
+                <option value="COMPLETED">Hoàn thành</option>
+                <option value="CANCELLED">Đã hủy</option>
+                <option value="NO_SHOW">Không đến</option>
+              </select>
             </div>
           </div>
           
-          <div className="sm:w-48">
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="">Tất cả trạng thái</option>
-              <option value="PENDING">Chờ xác nhận</option>
-              <option value="CONFIRMED">Đã xác nhận</option>
-              <option value="COMPLETED">Hoàn thành</option>
-              <option value="CANCELLED">Đã hủy</option>
-              <option value="NO_SHOW">Không đến</option>
-            </select>
-          </div>
+          {/* Bulk Actions */}
+          {selectedAppointments.size > 0 && (
+            <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-medium text-blue-900">
+                  Đã chọn {selectedAppointments.size} lịch hẹn
+                </span>
+                <button
+                  onClick={() => {
+                    setSelectedAppointments(new Set())
+                    setSelectAll(false)
+                  }}
+                  className="text-blue-600 hover:text-blue-800 text-sm"
+                >
+                  Bỏ chọn tất cả
+                </button>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleBulkDelete}
+                  className="flex items-center px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Hủy lịch hẹn
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -403,6 +574,14 @@ const BookingManagerPage = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    checked={selectAll}
+                    onChange={handleSelectAll}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Bệnh nhân
                 </th>
@@ -429,7 +608,7 @@ const BookingManagerPage = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center">
+                  <td colSpan={8} className="px-6 py-12 text-center">
                     <div className="inline-flex items-center">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="ml-2">Đang tải...</span>
@@ -438,13 +617,21 @@ const BookingManagerPage = () => {
                 </tr>
               ) : filteredAppointments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
                     {searchTerm || statusFilter ? 'Không tìm thấy lịch hẹn phù hợp' : 'Chưa có lịch hẹn nào'}
                   </td>
                 </tr>
               ) : (
                 filteredAppointments.map((appointment) => (
                   <tr key={appointment.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={selectedAppointments.has(appointment.id)}
+                        onChange={() => handleSelectAppointment(appointment.id)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="flex-shrink-0 h-10 w-10">
@@ -504,12 +691,19 @@ const BookingManagerPage = () => {
                     </td>
                     
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[appointment.status]}`}>
-                        <StatusIcon status={appointment.status} />
-                        <span className="ml-1">
-                          {statusLabels[appointment.status]}
-                        </span>
-                      </span>
+                      <select
+                        value={appointment.status}
+                        onChange={(e) => updateAppointmentStatus(appointment.id, e.target.value)}
+                        className={`text-xs font-medium rounded-full px-3 py-1 border-0 focus:ring-2 focus:ring-blue-500 ${statusColors[appointment.status as keyof typeof statusColors]}`}
+                      >
+                        <option value="PENDING">Chờ xác nhận</option>
+                        <option value="CONFIRMED">Đã xác nhận</option>
+                        <option value="PAYMENT_REQUESTED">Yêu cầu thanh toán</option>
+                        <option value="PAID">Đã thanh toán</option>
+                        <option value="COMPLETED">Hoàn thành</option>
+                        <option value="CANCELLED">Đã hủy</option>
+                        <option value="NO_SHOW">Không đến</option>
+                      </select>
                     </td>
                     
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -545,6 +739,16 @@ const BookingManagerPage = () => {
                               <X className="w-4 h-4" />
                             </button>
                           </>
+                        )}
+                        
+                        {appointment.status === 'CONFIRMED' && !appointment.paymentRequested && (
+                          <button
+                            onClick={() => handleRequestPayment(appointment)}
+                            className="text-orange-600 hover:text-orange-900"
+                            title="Yêu cầu thanh toán"
+                          >
+                            <TrendingUp className="w-4 h-4" />
+                          </button>
                         )}
                       </div>
                     </td>
@@ -803,6 +1007,109 @@ const BookingManagerPage = () => {
                     ? 'Không có bác sĩ phù hợp' 
                     : 'Xác nhận lịch hẹn'
                   }
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Request Modal */}
+      {showPaymentModal && selectedAppointmentForPayment && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Yêu cầu thanh toán cho lịch hẹn #{selectedAppointmentForPayment.id}
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowPaymentModal(false)
+                    setSelectedAppointmentForPayment(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-2">Thông tin lịch hẹn:</h4>
+                <p className="text-sm text-gray-600">
+                  <strong>Bệnh nhân:</strong> {selectedAppointmentForPayment.fullName}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Khoa:</strong> {getDepartmentDisplayName(selectedAppointmentForPayment.department)}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Ngày giờ:</strong> {new Date(selectedAppointmentForPayment.appointmentDate).toLocaleDateString('vi-VN')} lúc {selectedAppointmentForPayment.appointmentTime.slice(0, 5)}
+                </p>
+              </div>
+              
+              <div className="space-y-3">
+                <h4 className="font-medium text-gray-900">Nhập số tiền thanh toán:</h4>
+                <input
+                  type="text"
+                  placeholder="Nhập số tiền thanh toán"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                />
+              </div>
+              
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={handlePaymentRequest}
+                  disabled={requestingPayment}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {requestingPayment && (
+                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  )}
+                  {requestingPayment ? 'Đang xử lý...' : 'Gửi yêu cầu thanh toán'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Xác nhận xóa lịch hẹn
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowBulkDeleteConfirm(false)
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="space-y-3">
+                <p className="text-sm text-gray-600">
+                  Bạn có chắc chắn muốn xóa {selectedAppointments.size} lịch hẹn đã chọn?
+                </p>
+              </div>
+              
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={confirmBulkDelete}
+                  disabled={bulkDeleting}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {bulkDeleting && (
+                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  )}
+                  {bulkDeleting ? 'Đang xử lý...' : 'Xóa lịch hẹn'}
                 </button>
               </div>
             </div>

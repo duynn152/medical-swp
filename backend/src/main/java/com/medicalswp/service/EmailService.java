@@ -144,6 +144,31 @@ public class EmailService {
         }
     }
     
+    /**
+     * Gửi email yêu cầu thanh toán
+     */
+    public boolean sendPaymentRequest(Appointment appointment) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            
+            helper.setFrom(fromEmail);
+            helper.setTo(appointment.getEmail());
+            helper.setSubject("💳 Yêu cầu thanh toán lịch hẹn - " + appName);
+            
+            String htmlContent = buildPaymentRequestEmailContent(appointment);
+            helper.setText(htmlContent, true);
+            
+            mailSender.send(message);
+            logger.info("Payment request email sent successfully to: {}", appointment.getEmail());
+            return true;
+            
+        } catch (MessagingException e) {
+            logger.error("Failed to send payment request email to: {}", appointment.getEmail(), e);
+            return false;
+        }
+    }
+    
     private String buildConfirmationEmailContent(Appointment appointment) {
         DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
         DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
@@ -228,6 +253,51 @@ public class EmailService {
         "<p><strong>Khoa:</strong> " + appointment.getDepartment() + "</p>" +
         (reason != null && !reason.isEmpty() ? "<p><strong>Lý do:</strong> " + reason + "</p>" : "") +
         "</div><p>Đặt lịch mới: " + contactPhone + " | " + contactEmail + "</p>" +
+        "<p>Trân trọng,<br><strong>" + appName + "</strong></p></div>" +
+        "<div class=\"footer\"><p>" + contactAddress + "</p></div></div></body></html>";
+    }
+    
+    private String buildPaymentRequestEmailContent(Appointment appointment) {
+        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
+        
+        return "<!DOCTYPE html>" +
+        "<html><head><meta charset=\"UTF-8\"><style>" +
+        "body{font-family:Arial,sans-serif;line-height:1.6;color:#333}" +
+        ".container{max-width:600px;margin:0 auto;padding:20px}" +
+        ".header{background:linear-gradient(135deg,#F59E0B,#D97706);color:white;padding:30px;text-align:center;border-radius:10px 10px 0 0}" +
+        ".content{background:#fff;padding:30px;border:1px solid #e0e0e0}" +
+        ".appointment-info{background:#fef3c7;padding:20px;border-radius:8px;margin:20px 0}" +
+        ".highlight{color:#F59E0B;font-weight:bold}" +
+        ".payment-info{background:#fff7ed;padding:20px;border-radius:8px;margin:20px 0;border-left:4px solid #F59E0B}" +
+        ".footer{background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 10px 10px;font-size:14px;color:#666}" +
+        "</style></head><body>" +
+        "<div class=\"container\"><div class=\"header\">" +
+        "<h1>💳 Yêu cầu thanh toán</h1><p>" + appName + "</p></div>" +
+        "<div class=\"content\"><p>Kính chào <strong>" + appointment.getFullName() + "</strong>,</p>" +
+        "<p>Lịch hẹn của bạn đã được xác nhận và cần thanh toán để hoàn tất quá trình đặt lịch:</p>" +
+        "<div class=\"appointment-info\"><h3>📅 Thông tin lịch hẹn</h3>" +
+        "<p><strong>Mã lịch hẹn:</strong> <span class=\"highlight\">#" + appointment.getId() + "</span></p>" +
+        "<p><strong>Ngày khám:</strong> <span class=\"highlight\">" + appointment.getAppointmentDate().format(dateFormatter) + "</span></p>" +
+        "<p><strong>Giờ khám:</strong> <span class=\"highlight\">" + appointment.getAppointmentTime().format(timeFormatter) + "</span></p>" +
+        "<p><strong>Khoa khám:</strong> " + appointment.getDepartment().getDepartmentName() + "</p>" +
+        (appointment.getDoctor() != null ? 
+            "<p><strong>Bác sĩ phụ trách:</strong> " + appointment.getDoctor().getFullName() + "</p>" : "") +
+        "</div>" +
+        "<div class=\"payment-info\"><h3>💰 Thông tin thanh toán</h3>" +
+        "<p><strong>Phí khám:</strong> <span class=\"highlight\">" + 
+        String.format("%,.0f VNĐ", appointment.getPaymentAmount() != null ? appointment.getPaymentAmount() : 500000.0) + 
+        "</span></p>" +
+        "<p><strong>Hình thức thanh toán:</strong></p>" +
+        "<ul>" +
+        "<li>Tiền mặt tại quầy lễ tân</li>" +
+        "<li>Chuyển khoản: <strong>1234567890 - Ngân hàng ABC</strong></li>" +
+        "<li>Thanh toán qua ứng dụng ngân hàng</li>" +
+        "</ul>" +
+        "<p><strong>Nội dung chuyển khoản:</strong> <span class=\"highlight\">THANHTOAN #" + appointment.getId() + " " + appointment.getFullName() + "</span></p>" +
+        "</div>" +
+        "<p><strong>Lưu ý:</strong> Vui lòng thanh toán trước 24 giờ so với giờ hẹn. Sau khi thanh toán, vui lòng giữ biên lai để xuất trình khi đến khám.</p>" +
+        "<p>Liên hệ hỗ trợ: " + contactPhone + " | " + contactEmail + "</p>" +
         "<p>Trân trọng,<br><strong>" + appName + "</strong></p></div>" +
         "<div class=\"footer\"><p>" + contactAddress + "</p></div></div></body></html>";
     }

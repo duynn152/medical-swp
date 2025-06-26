@@ -48,7 +48,7 @@ const API_BASE = 'http://localhost:8080/api/blogs'
 
 // Helper function to get auth headers
 const getAuthHeaders = () => {
-  const token = localStorage.getItem('token')
+  const token = localStorage.getItem('authToken')
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   }
@@ -207,7 +207,7 @@ export const BlogProvider: React.FC<BlogProviderProps> = ({ children }) => {
       const formData = new FormData()
       formData.append('image', file)
       
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('authToken')
       const headers: HeadersInit = {}
       
       if (token) {

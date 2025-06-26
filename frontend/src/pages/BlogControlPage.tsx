@@ -1,6 +1,11 @@
-import { useState } from 'react'
-import { Plus, Edit2, Trash2, Eye, Calendar, User, Tag, Search, AlertCircle, Loader, Save } from 'lucide-react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useBlog, BlogPost } from '../contexts/BlogContext'
+import { 
+  Plus, Edit2, Trash2, Eye, AlertCircle, 
+  Loader, Search, Filter, Calendar, Tag, User,
+  Upload, X, ImageIcon, Save
+} from 'lucide-react'
+import { runDebug } from '../utils/debug'
 
 const BlogControlPage = () => {
   const { 
@@ -379,13 +384,22 @@ const BlogControlPage = () => {
           <h1 className="text-2xl font-bold text-gray-900">Quản lý Blog</h1>
           <p className="text-gray-600">Quản lý tất cả bài viết blog y khoa (Dữ liệu từ Database)</p>
         </div>
-        <button
-          onClick={handleAddBlog}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Thêm bài viết mới
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => runDebug()}
+            className="bg-yellow-500 text-white px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-yellow-600 transition-colors text-sm"
+            title="Debug authentication - Mở Console (F12) để xem kết quả"
+          >
+            🔍 Debug Auth
+          </button>
+          <button
+            onClick={handleAddBlog}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Thêm bài viết mới
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -582,7 +596,7 @@ const BlogControlPage = () => {
                       <div className="flex-shrink-0">
                         {blog.imageUrl ? (
                           <img
-                            src={blog.imageUrl.startsWith('http') ? blog.imageUrl : `http://localhost:8080${blog.imageUrl}`}
+                            src={blog.imageUrl.startsWith('http') ? blog.imageUrl : `http://localhost:8080/api${blog.imageUrl}`}
                             alt={blog.title}
                             className="w-16 h-16 object-cover rounded-md border border-gray-200"
                             onError={(e) => {
@@ -822,7 +836,7 @@ const BlogControlPage = () => {
                     {formData.imageUrl && (
                       <div className="relative">
                         <img
-                          src={formData.imageUrl.startsWith('http') ? formData.imageUrl : `http://localhost:8080${formData.imageUrl}`}
+                          src={formData.imageUrl.startsWith('http') ? formData.imageUrl : `http://localhost:8080/api${formData.imageUrl}`}
                           alt="Preview"
                           className="w-32 h-32 object-cover rounded-md border border-gray-200"
                           onError={(e) => {

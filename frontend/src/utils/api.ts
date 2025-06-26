@@ -67,9 +67,14 @@ export interface Appointment {
   appointmentTime: string
   department: string
   reason?: string
-  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
+  status: 'PENDING' | 'CONFIRMED' | 'PAYMENT_REQUESTED' | 'PAID' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
   emailSent: boolean
   reminderSent: boolean
+  paymentRequested: boolean
+  paymentCompleted: boolean
+  paymentAmount?: number
+  paymentRequestedAt?: string
+  paymentCompletedAt?: string
   user?: User
   doctor?: User
   notes?: string
@@ -372,8 +377,25 @@ class ApiService {
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to update appointment')
+      let errorMessage = 'Failed to update appointment'
+      try {
+        const error = await response.json()
+        errorMessage = error.error || errorMessage
+      } catch {
+        errorMessage = response.statusText || errorMessage
+      }
+      throw new Error(errorMessage)
+    }
+
+    // Check if response has content before parsing JSON
+    const contentLength = response.headers.get('content-length')
+    if (contentLength === '0' || response.status === 204) {
+      // For empty responses, return a minimal appointment object with updated status
+      return { 
+        id, 
+        ...appointment,
+        updatedAt: new Date().toISOString()
+      } as Appointment
     }
 
     return response.json()
@@ -495,6 +517,33 @@ class ApiService {
     if (!response.ok) {
       throw new Error('Failed to delete appointment')
     }
+  }
+
+  async requestPayment(id: number, amount: number): Promise<AppointmentResponse> {
+    const response = await fetch(`${API_BASE_URL}/appointments/${id}/request-payment`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ amount })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to request payment')
+    }
+
+    return response.json()
+  }
+
+  async getMyPatientsAppointments(): Promise<Appointment[]> {
+    const response = await fetch(`${API_BASE_URL}/appointments/my-patients`, {
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch doctor\'s patient appointments')
+    }
+
+    return response.json()
   }
 }
 

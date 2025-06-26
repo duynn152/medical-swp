@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
-import { Users, Home, Menu, X, LogOut, User, BookOpen, Calendar } from 'lucide-react'
+import { Users, Home, Menu, X, LogOut, User, BookOpen, Calendar, UserCheck } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { getStoredUserInfo, clearAuth, isAuthenticated } from '../utils/api'
 
@@ -35,6 +35,12 @@ const Layout = () => {
       href: '/admin/users', 
       icon: Users,
       allowedRoles: ['ADMIN'] // Only admin can manage users
+    },
+    { 
+      name: 'Patient Control', 
+      href: '/admin/patients', 
+      icon: UserCheck,
+      allowedRoles: ['ADMIN', 'DOCTOR', 'STAFF'] // Admin, doctors and staff can manage patients
     },
     { 
       name: 'Blog Control', 
