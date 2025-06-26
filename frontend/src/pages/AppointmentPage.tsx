@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Calendar, Clock, User, Phone, Mail, CheckCircle, AlertCircle } from 'lucide-react'
-import { apiService, CreateAppointmentRequest } from '../utils/api'
+import { apiService, CreateAppointmentRequest, DepartmentInfo } from '../utils/api'
 
 const AppointmentPage = () => {
   const [formData, setFormData] = useState({
@@ -20,16 +20,35 @@ const AppointmentPage = () => {
     appointmentId?: number
   }>({ type: null, message: '' })
 
-  const departments = [
-    'Khoa Nội tổng hợp',
-    'Khoa Ngoại tổng hợp', 
-    'Khoa Sản phụ khoa',
-    'Khoa Nhi',
-    'Khoa Mắt',
-    'Khoa Tai mũi họng',
-    'Khoa Da liễu',
-    'Khoa Thần kinh'
-  ]
+  const [departments, setDepartments] = useState<DepartmentInfo[]>([])
+  const [loadingDepartments, setLoadingDepartments] = useState(true)
+
+  // Fetch departments from API
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      try {
+        const departmentsData = await apiService.getDepartments()
+        setDepartments(departmentsData)
+      } catch (error) {
+        console.error('Error fetching departments:', error)
+        // Fallback to basic departments if API fails
+        setDepartments([
+          { code: 'INTERNAL_MEDICINE', departmentName: 'Khoa Nội tổng hợp', specialtyName: 'Nội khoa' },
+          { code: 'SURGERY', departmentName: 'Khoa Ngoại tổng hợp', specialtyName: 'Ngoại khoa' },
+          { code: 'PEDIATRICS', departmentName: 'Khoa Nhi', specialtyName: 'Nhi khoa' },
+          { code: 'GYNECOLOGY', departmentName: 'Khoa Sản phụ khoa', specialtyName: 'Phụ khoa' },
+          { code: 'OPHTHALMOLOGY', departmentName: 'Khoa Mắt', specialtyName: 'Mắt' },
+          { code: 'ENT', departmentName: 'Khoa Tai mũi họng', specialtyName: 'Tai mũi họng' },
+          { code: 'DERMATOLOGY', departmentName: 'Khoa Da liễu', specialtyName: 'Da liễu' },
+          { code: 'NEUROLOGY', departmentName: 'Khoa Thần kinh', specialtyName: 'Thần kinh' }
+        ])
+      } finally {
+        setLoadingDepartments(false)
+      }
+    }
+
+    fetchDepartments()
+  }, [])
 
   const timeSlots = [
     '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
@@ -247,7 +266,7 @@ const AppointmentPage = () => {
                 >
                   <option value="">Chọn khoa khám</option>
                   {departments.map((dept) => (
-                    <option key={dept} value={dept}>{dept}</option>
+                    <option key={dept.code} value={dept.code}>{dept.departmentName}</option>
                   ))}
                 </select>
               </div>

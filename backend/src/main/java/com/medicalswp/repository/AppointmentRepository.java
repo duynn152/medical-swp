@@ -21,7 +21,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     List<Appointment> findByAppointmentDate(LocalDate date);
     
     // Find appointments by department
-    List<Appointment> findByDepartment(String department);
+    List<Appointment> findByDepartment(Appointment.Department department);
     
     // Find appointments by email
     List<Appointment> findByEmailContainingIgnoreCase(String email);
@@ -41,7 +41,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
            "AND a.status NOT IN ('CANCELLED')")
     Long countByDateTimeAndDepartment(@Param("date") LocalDate date, 
                                      @Param("time") LocalTime time, 
-                                     @Param("department") String department);
+                                     @Param("department") Appointment.Department department);
     
     // Find appointments that need reminder emails (1 day before)
     @Query("SELECT a FROM Appointment a WHERE a.appointmentDate = :reminderDate " +

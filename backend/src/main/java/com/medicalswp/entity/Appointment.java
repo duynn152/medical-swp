@@ -42,9 +42,9 @@ public class Appointment {
     @NotNull
     private LocalTime appointmentTime;
     
-    @NotBlank
-    @Size(max = 100)
-    private String department;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Department department;
     
     @Size(max = 1000)
     private String reason;
@@ -83,7 +83,7 @@ public class Appointment {
     
     public Appointment(String fullName, String phone, String email, 
                       LocalDate appointmentDate, LocalTime appointmentTime, 
-                      String department, String reason) {
+                      Department department, String reason) {
         this.fullName = fullName;
         this.phone = phone;
         this.email = email;
@@ -142,11 +142,11 @@ public class Appointment {
         this.appointmentTime = appointmentTime;
     }
     
-    public String getDepartment() {
+    public Department getDepartment() {
         return department;
     }
     
-    public void setDepartment(String department) {
+    public void setDepartment(Department department) {
         this.department = department;
     }
     
@@ -228,6 +228,58 @@ public class Appointment {
         CANCELLED,    // Đã hủy
         COMPLETED,    // Đã hoàn thành
         NO_SHOW       // Không đến
+    }
+    
+    // Department enum synchronized with User.MedicalSpecialty
+    public enum Department {
+        CARDIOLOGY("Khoa Tim mạch", "Tim mạch"),
+        NEUROLOGY("Khoa Thần kinh", "Thần kinh"),
+        DERMATOLOGY("Khoa Da liễu", "Da liễu"),
+        ORTHOPEDICS("Khoa Chấn thương chỉnh hình", "Chấn thương chỉnh hình"),
+        PEDIATRICS("Khoa Nhi", "Nhi khoa"),
+        GYNECOLOGY("Khoa Sản phụ khoa", "Phụ khoa"),
+        INTERNAL_MEDICINE("Khoa Nội tổng hợp", "Nội khoa"),
+        SURGERY("Khoa Ngoại tổng hợp", "Ngoại khoa"),
+        ONCOLOGY("Khoa Ung bướu", "Ung bướu"),
+        PSYCHIATRY("Khoa Tâm thần", "Tâm thần"),
+        OPHTHALMOLOGY("Khoa Mắt", "Mắt"),
+        ENT("Khoa Tai mũi họng", "Tai mũi họng"),
+        UROLOGY("Khoa Tiết niệu", "Tiết niệu"),
+        GASTROENTEROLOGY("Khoa Tiêu hóa", "Tiêu hóa"),
+        PULMONOLOGY("Khoa Hô hấp", "Hô hấp"),
+        ENDOCRINOLOGY("Khoa Nội tiết", "Nội tiết"),
+        NEPHROLOGY("Khoa Thận", "Thận"),
+        RHEUMATOLOGY("Khoa Khớp", "Khớp"),
+        RADIOLOGY("Khoa Chẩn đoán hình ảnh", "Chẩn đoán hình ảnh"),
+        ANESTHESIOLOGY("Khoa Gây mê hồi sức", "Gây mê hồi sức"),
+        EMERGENCY_MEDICINE("Khoa Cấp cứu", "Cấp cứu"),
+        GENERAL_PRACTICE("Khoa Đa khoa", "Đa khoa");
+        
+        private final String departmentName;
+        private final String specialtyName;
+        
+        Department(String departmentName, String specialtyName) {
+            this.departmentName = departmentName;
+            this.specialtyName = specialtyName;
+        }
+        
+        public String getDepartmentName() {
+            return departmentName;
+        }
+        
+        public String getSpecialtyName() {
+            return specialtyName;
+        }
+        
+        // Get corresponding User.MedicalSpecialty
+        public static User.MedicalSpecialty toMedicalSpecialty(Department department) {
+            return User.MedicalSpecialty.valueOf(department.name());
+        }
+        
+        // Get Department from User.MedicalSpecialty
+        public static Department fromMedicalSpecialty(User.MedicalSpecialty specialty) {
+            return Department.valueOf(specialty.name());
+        }
     }
     
     @Override

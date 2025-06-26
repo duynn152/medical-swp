@@ -177,7 +177,7 @@ public class AppointmentService {
     /**
      * Kiểm tra time slot availability
      */
-    public boolean isTimeSlotAvailable(LocalDate date, LocalTime time, String department) {
+    public boolean isTimeSlotAvailable(LocalDate date, LocalTime time, Appointment.Department department) {
         Long count = appointmentRepository.countByDateTimeAndDepartment(date, time, department);
         return count < 3; // Max 3 appointments per time slot per department
     }

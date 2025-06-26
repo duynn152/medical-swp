@@ -52,6 +52,12 @@ export interface SpecialtyInfo {
   displayName: string
 }
 
+export interface DepartmentInfo {
+  code: string
+  departmentName: string
+  specialtyName: string
+}
+
 export interface Appointment {
   id: number
   fullName: string
@@ -268,6 +274,18 @@ class ApiService {
 
     if (!response.ok) {
       throw new Error('Failed to fetch medical specialties')
+    }
+
+    return response.json()
+  }
+
+  async getDepartments(): Promise<DepartmentInfo[]> {
+    const response = await fetch(`${API_BASE_URL}/appointments/public/departments`, {
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch departments')
     }
 
     return response.json()

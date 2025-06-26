@@ -90,25 +90,85 @@ show_statistics() {
     echo "=== Database Statistics ==="
     export PGPASSWORD="$DB_PASSWORD"
     psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "
+        -- Show table row counts
         SELECT 
-            'Total Users' as metric,
-            count(*) as value
+            'Table: ' || tablename as metric,
+            (SELECT count(*) FROM pg_class WHERE relname = tablename) as table_exists,
+            CASE 
+                WHEN (SELECT count(*) FROM pg_class WHERE relname = tablename) > 0 
+                THEN (
+                    SELECT n_tup_ins - n_tup_del 
+                    FROM pg_stat_user_tables 
+                    WHERE relname = tablename
+                )
+                ELSE 0 
+            END as row_count
+        FROM pg_tables 
+        WHERE schemaname = 'public'
+        ORDER BY tablename;
+        
+        -- Additional specific metrics if tables exist
+        SELECT '--- User Statistics ---' as section, '' as details, '' as count
+        UNION ALL
+        SELECT 
+            'Total Users' as section,
+            '' as details,
+            COALESCE(count(*)::text, '0') as count
         FROM users
+        WHERE EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'users')
         UNION ALL
         SELECT 
-            'Active Users' as metric,
-            count(*) as value
-        FROM users WHERE active = true
+            'Active Users' as section,
+            '' as details,
+            COALESCE(count(*)::text, '0') as count
+        FROM users 
+        WHERE active = true AND EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'users')
         UNION ALL
         SELECT 
-            'Admin Users' as metric,
-            count(*) as value
-        FROM users WHERE role = 'ADMIN'
+            'Admin Users' as section,
+            '' as details,
+            COALESCE(count(*)::text, '0') as count
+        FROM users 
+        WHERE role = 'ADMIN' AND EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'users')
+        UNION ALL
+        SELECT '--- Content Statistics ---' as section, '' as details, '' as count
         UNION ALL
         SELECT 
-            'Total Blog Posts' as metric,
-            count(*) as value
-        FROM blog_posts;
+            'Total Blog Posts' as section,
+            '' as details,
+            COALESCE(count(*)::text, '0') as count
+        FROM blog_posts
+        WHERE EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'blog_posts')
+        UNION ALL
+        SELECT 
+            'Published Posts' as section,
+            '' as details,
+            COALESCE(count(*)::text, '0') as count
+        FROM blog_posts 
+        WHERE status = 'PUBLISHED' AND EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'blog_posts')
+        UNION ALL
+        SELECT '--- Appointment Statistics ---' as section, '' as details, '' as count
+        UNION ALL
+        SELECT 
+            'Total Appointments' as section,
+            '' as details,
+            COALESCE(count(*)::text, '0') as count
+        FROM appointments
+        WHERE EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'appointments')
+        UNION ALL
+        SELECT 
+            'Pending Appointments' as section,
+            '' as details,
+            COALESCE(count(*)::text, '0') as count
+        FROM appointments 
+        WHERE status = 'PENDING' AND EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'appointments')
+        UNION ALL
+        SELECT 
+            'Confirmed Appointments' as section,
+            '' as details,
+            COALESCE(count(*)::text, '0') as count
+        FROM appointments 
+        WHERE status = 'CONFIRMED' AND EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'appointments');
     "
     echo
 }
@@ -136,11 +196,30 @@ clear_data() {
     if [ "$confirm" = "CLEAR" ]; then
         echo "Clearing all data..."
         export PGPASSWORD="$DB_PASSWORD"
+        
+        # Get all table names and truncate them
         psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "
-            TRUNCATE TABLE blog_posts CASCADE;
-            TRUNCATE TABLE users RESTART IDENTITY CASCADE;
+            DO \$\$
+            DECLARE
+                table_record RECORD;
+            BEGIN
+                -- Disable foreign key checks temporarily
+                SET session_replication_role = replica;
+                
+                -- Truncate all tables
+                FOR table_record IN 
+                    SELECT tablename 
+                    FROM pg_tables 
+                    WHERE schemaname = 'public'
+                LOOP
+                    EXECUTE 'TRUNCATE TABLE ' || quote_ident(table_record.tablename) || ' RESTART IDENTITY CASCADE;';
+                END LOOP;
+                
+                -- Re-enable foreign key checks
+                SET session_replication_role = DEFAULT;
+            END \$\$;
         "
-        echo "✓ All data cleared"
+        echo "✓ All data cleared from all tables"
     else
         echo "Operation cancelled"
     fi
@@ -154,11 +233,32 @@ reset_database() {
     if [ "$confirm" = "RESET" ]; then
         echo "Resetting database..."
         export PGPASSWORD="$DB_PASSWORD"
+        
+        # Drop all tables, sequences, and other objects
         psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "
-            DROP TABLE IF EXISTS blog_posts CASCADE;
-            DROP TABLE IF EXISTS users CASCADE;
-            DROP SEQUENCE IF EXISTS users_seq CASCADE;
-            DROP SEQUENCE IF EXISTS blog_posts_seq CASCADE;
+            DO \$\$
+            DECLARE
+                table_record RECORD;
+                sequence_record RECORD;
+            BEGIN
+                -- Drop all tables
+                FOR table_record IN 
+                    SELECT tablename 
+                    FROM pg_tables 
+                    WHERE schemaname = 'public'
+                LOOP
+                    EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(table_record.tablename) || ' CASCADE;';
+                END LOOP;
+                
+                -- Drop all sequences
+                FOR sequence_record IN 
+                    SELECT sequencename 
+                    FROM pg_sequences 
+                    WHERE schemaname = 'public'
+                LOOP
+                    EXECUTE 'DROP SEQUENCE IF EXISTS ' || quote_ident(sequence_record.sequencename) || ' CASCADE;';
+                END LOOP;
+            END \$\$;
         "
         echo "✓ Database reset completed"
         echo "Restart the backend to recreate tables"

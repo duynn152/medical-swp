@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Calendar, Clock, User, Phone, Mail, Building2, Check, X, Eye, Search, AlertCircle, CheckCircle, XCircle, Calendar as CalendarIcon, TrendingUp, UserCheck } from 'lucide-react'
-import { apiService } from '../utils/api'
+import { apiService, DepartmentInfo } from '../utils/api'
 import toast from 'react-hot-toast'
 
 interface Appointment {
@@ -60,38 +60,20 @@ const BookingManagerPage = () => {
   const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(null)
   const [confirmingWithDoctor, setConfirmingWithDoctor] = useState(false)
   const [specialties, setSpecialties] = useState<Array<{code: string, displayName: string}>>([])
+  const [departments, setDepartments] = useState<DepartmentInfo[]>([])
 
-  // Mapping department to medical specialties
-  const departmentToSpecialtyMap: Record<string, string[]> = {
-    'Khoa Nội tổng hợp': ['INTERNAL_MEDICINE', 'GENERAL_PRACTICE'],
-    'Khoa Ngoại tổng hợp': ['SURGERY', 'GENERAL_PRACTICE'],
-    'Khoa Sản phụ khoa': ['GYNECOLOGY'],
-    'Khoa Nhi': ['PEDIATRICS'],
-    'Khoa Mắt': ['OPHTHALMOLOGY'],
-    'Khoa Tai mũi họng': ['ENT'],
-    'Khoa Da liễu': ['DERMATOLOGY'],
-    'Khoa Thần kinh': ['NEUROLOGY'],
-    'Khoa Tim mạch': ['CARDIOLOGY'],
-    'Khoa Tiêu hóa': ['GASTROENTEROLOGY'],
-    'Khoa Hô hấp': ['PULMONOLOGY'],
-    'Khoa Thận': ['NEPHROLOGY'],
-    'Khoa Nội tiết': ['ENDOCRINOLOGY'],
-    'Khoa Chấn thương chỉnh hình': ['ORTHOPEDICS'],
-    'Khoa Ung bướu': ['ONCOLOGY'],
-    'Khoa Tâm thần': ['PSYCHIATRY'],
-    'Khoa Tiết niệu': ['UROLOGY'],
-    'Khoa Khớp': ['RHEUMATOLOGY'],
-    'Khoa Chẩn đoán hình ảnh': ['RADIOLOGY'],
-    'Khoa Gây mê hồi sức': ['ANESTHESIOLOGY'],
-    'Khoa Cấp cứu': ['EMERGENCY_MEDICINE']
+  // Get department display name from code
+  const getDepartmentDisplayName = (departmentCode: string) => {
+    const department = departments.find(dept => dept.code === departmentCode)
+    return department?.departmentName || departmentCode
   }
 
   // Get relevant doctors for a specific appointment department
+  // Now that departments and specialties are synchronized, we can do direct mapping
   const getRelevantDoctors = (department: string): Doctor[] => {
-    const relevantSpecialties = departmentToSpecialtyMap[department] || ['GENERAL_PRACTICE']
     return doctors.filter(doctor => 
       !doctor.specialty || // Include doctors without specialty (general practice)
-      relevantSpecialties.includes(doctor.specialty) ||
+      doctor.specialty === department || // Direct match with department code
       doctor.specialty === 'GENERAL_PRACTICE' // Always include general practice doctors
     )
   }
@@ -125,6 +107,7 @@ const BookingManagerPage = () => {
     fetchStats()
     fetchDoctors()
     fetchSpecialties()
+    fetchDepartments()
   }, [])
 
   useEffect(() => {
@@ -198,6 +181,16 @@ const BookingManagerPage = () => {
     } catch (error) {
       console.error('Error fetching specialties:', error)
       toast.error('Không thể tải danh sách chuyên khoa')
+    }
+  }
+
+  const fetchDepartments = async () => {
+    try {
+      const departmentsData = await apiService.getDepartments()
+      setDepartments(departmentsData)
+    } catch (error) {
+      console.error('Error fetching departments:', error)
+      toast.error('Không thể tải danh sách khoa')
     }
   }
 
@@ -499,7 +492,7 @@ const BookingManagerPage = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center text-sm text-gray-900">
                         <Building2 className="w-4 h-4 mr-1 text-gray-400" />
-                        {appointment.department}
+                        {getDepartmentDisplayName(appointment.department)}
                       </div>
                     </td>
                     
@@ -608,7 +601,7 @@ const BookingManagerPage = () => {
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Khoa khám</label>
-                  <p className="mt-1 text-sm text-gray-900">{selectedAppointment.department}</p>
+                  <p className="mt-1 text-sm text-gray-900">{getDepartmentDisplayName(selectedAppointment.department)}</p>
                 </div>
                 
                 {selectedAppointment.doctor && (
@@ -731,7 +724,7 @@ const BookingManagerPage = () => {
                   <strong>Bệnh nhân:</strong> {selectedAppointmentForConfirm.fullName}
                 </p>
                 <p className="text-sm text-gray-600">
-                  <strong>Khoa:</strong> {selectedAppointmentForConfirm.department}
+                  <strong>Khoa:</strong> {getDepartmentDisplayName(selectedAppointmentForConfirm.department)}
                 </p>
                 <p className="text-sm text-gray-600">
                   <strong>Ngày giờ:</strong> {new Date(selectedAppointmentForConfirm.appointmentDate).toLocaleDateString('vi-VN')} lúc {selectedAppointmentForConfirm.appointmentTime.slice(0, 5)}
@@ -741,7 +734,7 @@ const BookingManagerPage = () => {
               <div className="space-y-3">
                 <h4 className="font-medium text-gray-900">Chọn bác sĩ:</h4>
                 <p className="text-sm text-gray-600">
-                  Hiển thị các bác sĩ có chuyên khoa phù hợp với <strong>{selectedAppointmentForConfirm.department}</strong>
+                  Hiển thị các bác sĩ có chuyên khoa phù hợp với <strong>{getDepartmentDisplayName(selectedAppointmentForConfirm.department)}</strong>
                 </p>
                 {getRelevantDoctors(selectedAppointmentForConfirm.department).length === 0 ? (
                   <div className="text-center py-8">
@@ -749,7 +742,7 @@ const BookingManagerPage = () => {
                       <User className="w-12 h-12 mx-auto text-gray-300" />
                     </div>
                     <p className="text-gray-500">
-                      Không có bác sĩ nào phù hợp với khoa <strong>{selectedAppointmentForConfirm.department}</strong>
+                      Không có bác sĩ nào phù hợp với khoa <strong>{getDepartmentDisplayName(selectedAppointmentForConfirm.department)}</strong>
                     </p>
                     <p className="text-sm text-gray-400 mt-1">
                       Vui lòng thêm bác sĩ có chuyên khoa phù hợp hoặc bác sĩ đa khoa

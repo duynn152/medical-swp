@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,15 +39,43 @@ public class AppointmentController {
      * This endpoint will automatically send confirmation email
      */
     @PostMapping("/public")
-    public ResponseEntity<?> createPublicAppointment(@Valid @RequestBody Appointment appointment) {
+    public ResponseEntity<?> createPublicAppointment(@Valid @RequestBody CreateAppointmentRequest request) {
         try {
             logger.info("=== Creating public appointment ===");
             logger.info("Request data: fullName={}, email={}, date={}, time={}, department={}", 
-                    appointment.getFullName(), 
-                    appointment.getEmail(), 
-                    appointment.getAppointmentDate(), 
-                    appointment.getAppointmentTime(), 
-                    appointment.getDepartment());
+                    request.getFullName(), 
+                    request.getEmail(), 
+                    request.getAppointmentDate(), 
+                    request.getAppointmentTime(), 
+                    request.getDepartment());
+            
+            // Convert request to Appointment entity
+            Appointment appointment = new Appointment();
+            appointment.setFullName(request.getFullName());
+            appointment.setPhone(request.getPhone());
+            appointment.setEmail(request.getEmail());
+            appointment.setAppointmentDate(LocalDate.parse(request.getAppointmentDate()));
+            appointment.setAppointmentTime(LocalTime.parse(request.getAppointmentTime()));
+            appointment.setReason(request.getReason());
+            
+            // Convert department string to enum
+            try {
+                Appointment.Department department = Appointment.Department.valueOf(request.getDepartment());
+                appointment.setDepartment(department);
+            } catch (IllegalArgumentException e) {
+                // If department code is invalid, try to find by department name
+                Appointment.Department department = null;
+                for (Appointment.Department dept : Appointment.Department.values()) {
+                    if (dept.getDepartmentName().equals(request.getDepartment())) {
+                        department = dept;
+                        break;
+                    }
+                }
+                if (department == null) {
+                    throw new IllegalArgumentException("Invalid department: " + request.getDepartment());
+                }
+                appointment.setDepartment(department);
+            }
             
             Appointment savedAppointment = appointmentService.createAppointment(appointment);
             
@@ -121,7 +150,26 @@ public class AppointmentController {
                 return ResponseEntity.badRequest().body(error);
             }
             
-            boolean available = appointmentService.isTimeSlotAvailable(appointmentDate, appointmentTime, department);
+            // Convert department string to enum for availability check
+            Appointment.Department departmentEnum = null;
+            try {
+                departmentEnum = Appointment.Department.valueOf(department);
+            } catch (IllegalArgumentException e) {
+                // Try to find by department name
+                for (Appointment.Department dept : Appointment.Department.values()) {
+                    if (dept.getDepartmentName().equals(department)) {
+                        departmentEnum = dept;
+                        break;
+                    }
+                }
+                if (departmentEnum == null) {
+                    Map<String, String> error = new HashMap<>();
+                    error.put("error", "Invalid department: " + department);
+                    return ResponseEntity.badRequest().body(error);
+                }
+            }
+            
+            boolean available = appointmentService.isTimeSlotAvailable(appointmentDate, appointmentTime, departmentEnum);
             
             Map<String, Object> response = new HashMap<>();
             response.put("available", available);
@@ -410,5 +458,71 @@ public class AppointmentController {
             error.put("error", "Lỗi khi test email: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
+    }
+    
+    /**
+     * PUBLIC: Get all available departments
+     */
+    @GetMapping("/public/departments")
+    public ResponseEntity<?> getAllDepartments() {
+        try {
+            List<DepartmentInfo> departments = new ArrayList<>();
+            for (Appointment.Department dept : Appointment.Department.values()) {
+                departments.add(new DepartmentInfo(dept.name(), dept.getDepartmentName(), dept.getSpecialtyName()));
+            }
+            return ResponseEntity.ok(departments);
+        } catch (Exception e) {
+            logger.error("Error fetching departments", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    public static class DepartmentInfo {
+        public String code;
+        public String departmentName;
+        public String specialtyName;
+        
+        public DepartmentInfo(String code, String departmentName, String specialtyName) {
+            this.code = code;
+            this.departmentName = departmentName;
+            this.specialtyName = specialtyName;
+        }
+        
+        // Getters
+        public String getCode() { return code; }
+        public String getDepartmentName() { return departmentName; }
+        public String getSpecialtyName() { return specialtyName; }
+    }
+    
+    public static class CreateAppointmentRequest {
+        public String fullName;
+        public String phone;
+        public String email;
+        public String appointmentDate;
+        public String appointmentTime;
+        public String department; // Still accept String from frontend
+        public String reason;
+        
+        // Getters and setters
+        public String getFullName() { return fullName; }
+        public void setFullName(String fullName) { this.fullName = fullName; }
+        
+        public String getPhone() { return phone; }
+        public void setPhone(String phone) { this.phone = phone; }
+        
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+        
+        public String getAppointmentDate() { return appointmentDate; }
+        public void setAppointmentDate(String appointmentDate) { this.appointmentDate = appointmentDate; }
+        
+        public String getAppointmentTime() { return appointmentTime; }
+        public void setAppointmentTime(String appointmentTime) { this.appointmentTime = appointmentTime; }
+        
+        public String getDepartment() { return department; }
+        public void setDepartment(String department) { this.department = department; }
+        
+        public String getReason() { return reason; }
+        public void setReason(String reason) { this.reason = reason; }
     }
 } 
