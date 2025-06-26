@@ -48,8 +48,21 @@ const AppointmentPage = () => {
         throw new Error('Vui lòng điền đầy đủ thông tin bắt buộc')
       }
 
+      // Validate date format and value
+      if (!isValidDate(formData.appointmentDate)) {
+        throw new Error('Ngày khám không hợp lệ. Vui lòng chọn ngày từ hôm nay trở đi.')
+      }
+
+      console.log('Submitting appointment with date:', formData.appointmentDate)
+
       // Check time slot availability first
       if (formData.appointmentDate && formData.appointmentTime && formData.department) {
+        console.log('Checking availability for:', {
+          date: formData.appointmentDate,
+          time: formData.appointmentTime,
+          department: formData.department
+        })
+        
         const availability = await apiService.checkTimeSlotAvailability(
           formData.appointmentDate,
           formData.appointmentTime,
@@ -100,12 +113,30 @@ const AppointmentPage = () => {
     } finally {
       setIsSubmitting(false)
     }
+      }
+  
+  // Add date validation function
+  const isValidDate = (dateString: string) => {
+    if (!dateString) return false
+    const date = new Date(dateString)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return date instanceof Date && !isNaN(date.getTime()) && date >= today
   }
 
+  // Add console logging for debugging
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    
+    // Log date changes for debugging
+    if (name === 'appointmentDate') {
+      console.log('Date selected:', value)
+      console.log('Is valid date:', isValidDate(value))
+    }
+    
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [name]: value
     })
   }
 

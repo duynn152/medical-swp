@@ -2,7 +2,6 @@ package com.medicalswp.config;
 
 import com.medicalswp.filter.JwtAuthenticationFilter;
 import com.medicalswp.service.UserDetailsServiceImpl;
-import com.medicalswp.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -46,8 +45,6 @@ public class SecurityConfig implements WebMvcConfigurer {
     @Autowired
     private UserDetailsServiceImpl userDetailsService;
 
-    @Autowired
-    private JwtUtil jwtUtil;
     
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -67,6 +64,9 @@ public class SecurityConfig implements WebMvcConfigurer {
                 
                 // Allow public access to published blog content
                 .requestMatchers(HttpMethod.GET, "/blogs/published", "/blogs/featured", "/blogs/category/**", "/blogs/search").permitAll()
+                
+                // Allow public access to appointment booking endpoints
+                .requestMatchers("/appointments/public/**").permitAll()
                 
                 // All other blog operations require authentication with proper roles
                 .requestMatchers(HttpMethod.GET, "/blogs").hasAnyAuthority("ROLE_ADMIN", "ROLE_DOCTOR", "ROLE_STAFF")

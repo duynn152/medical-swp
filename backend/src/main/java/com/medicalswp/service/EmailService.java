@@ -42,6 +42,8 @@ public class EmailService {
      */
     public boolean sendAppointmentConfirmation(Appointment appointment) {
         try {
+            logger.info("=== Attempting to send confirmation email to: {} ===", appointment.getEmail());
+            
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             
@@ -52,12 +54,16 @@ public class EmailService {
             String htmlContent = buildConfirmationEmailContent(appointment);
             helper.setText(htmlContent, true);
             
+            logger.info("=== Sending email via SMTP ===");
             mailSender.send(message);
-            logger.info("Confirmation email sent successfully to: {}", appointment.getEmail());
+            logger.info("=== Confirmation email sent successfully to: {} ===", appointment.getEmail());
             return true;
             
         } catch (MessagingException e) {
-            logger.error("Failed to send confirmation email to: {}", appointment.getEmail(), e);
+            logger.error("=== MessagingException when sending confirmation email to: {} ===", appointment.getEmail(), e);
+            return false;
+        } catch (Exception e) {
+            logger.error("=== Unexpected error when sending confirmation email to: {} ===", appointment.getEmail(), e);
             return false;
         }
     }
@@ -117,18 +123,23 @@ public class EmailService {
      */
     public boolean sendSimpleEmail(String to, String subject, String content) {
         try {
+            logger.info("=== Attempting to send simple email to: {} ===", to);
+            logger.info("=== Email from: {} ===", fromEmail);
+            
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
             message.setTo(to);
             message.setSubject(subject);
             message.setText(content);
             
+            logger.info("=== Sending simple email via SMTP ===");
             mailSender.send(message);
-            logger.info("Simple email sent successfully to: {}", to);
+            logger.info("=== Simple email sent successfully to: {} ===", to);
             return true;
             
         } catch (Exception e) {
-            logger.error("Failed to send simple email to: {}", to, e);
+            logger.error("=== Failed to send simple email to: {} ===", to, e);
+            logger.error("=== Error details: {} ===", e.getMessage());
             return false;
         }
     }
