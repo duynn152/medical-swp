@@ -596,7 +596,7 @@ const BlogControlPage = () => {
                       <div className="flex-shrink-0">
                         {blog.imageUrl ? (
                           <img
-                            src={blog.imageUrl.startsWith('http') ? blog.imageUrl : `http://localhost:8080/api${blog.imageUrl}`}
+                            src={blog.imageUrl.startsWith('http') ? blog.imageUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:8080/api'}${blog.imageUrl}`}
                             alt={blog.title}
                             className="w-16 h-16 object-cover rounded-md border border-gray-200"
                             onError={(e) => {
@@ -836,7 +836,7 @@ const BlogControlPage = () => {
                     {formData.imageUrl && (
                       <div className="relative">
                         <img
-                          src={formData.imageUrl.startsWith('http') ? formData.imageUrl : `http://localhost:8080/api${formData.imageUrl}`}
+                          src={formData.imageUrl.startsWith('http') ? formData.imageUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:8080/api'}${formData.imageUrl}`}
                           alt="Preview"
                           className="w-32 h-32 object-cover rounded-md border border-gray-200"
                           onError={(e) => {

@@ -44,7 +44,11 @@ interface BlogProviderProps {
   children: ReactNode
 }
 
-const API_BASE = 'http://localhost:8080/api/blogs'
+// Use environment variable for API base URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
+const API_BASE = `${API_BASE_URL}/blogs`
+
+console.log('🔧 BlogContext API Configuration:', { API_BASE_URL, API_BASE })
 
 // Helper function to get auth headers
 const getAuthHeaders = () => {
@@ -98,7 +102,7 @@ export const BlogProvider: React.FC<BlogProviderProps> = ({ children }) => {
         response = await makeRequest(`${API_BASE}`)
       } catch (adminError) {
         // If admin fails (403/401), try public endpoint for published blogs only
-        response = await fetch('http://localhost:8080/api/public/blogs/published')
+        response = await fetch(`${API_BASE_URL}/public/blogs/published`)
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)
         }

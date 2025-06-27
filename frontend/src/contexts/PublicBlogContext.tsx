@@ -39,7 +39,11 @@ interface PublicBlogProviderProps {
   children: ReactNode
 }
 
-const PUBLIC_API_BASE = 'http://localhost:8080/api/public/blogs'
+// Use environment variable for API base URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
+const PUBLIC_API_BASE = `${API_BASE_URL}/public/blogs`
+
+console.log('🔧 PublicBlogContext API Configuration:', { API_BASE_URL, PUBLIC_API_BASE })
 
 export const PublicBlogProvider: React.FC<PublicBlogProviderProps> = ({ children }) => {
   const [publishedBlogs, setPublishedBlogs] = useState<BlogPost[]>([])

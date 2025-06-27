@@ -13,7 +13,8 @@ export const debugAuth = async () => {
   
   try {
     // Call backend debug endpoint
-    const response = await fetch('http://localhost:8080/api/auth/debug', {
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
+    const response = await fetch(`${API_BASE_URL}/auth/debug`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
