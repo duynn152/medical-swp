@@ -78,7 +78,7 @@ const BlogPage = () => {
                   <div className="md:w-1/2">
                     {post.imageUrl ? (
                       <img
-                        src={post.imageUrl.startsWith('http') ? post.imageUrl : `http://localhost:8080/api${post.imageUrl}`}
+                        src={post.imageUrl.startsWith('http') ? post.imageUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:8080/api'}${post.imageUrl}`}
                         alt={post.title}
                         className="h-64 md:h-full w-full object-cover"
                         onError={(e) => {
@@ -146,7 +146,7 @@ const BlogPage = () => {
                 <article key={post.id} className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                   {post.imageUrl ? (
                     <img
-                      src={post.imageUrl.startsWith('http') ? post.imageUrl : `http://localhost:8080/api${post.imageUrl}`}
+                      src={post.imageUrl.startsWith('http') ? post.imageUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:8080/api'}${post.imageUrl}`}
                       alt={post.title}
                       className="h-48 w-full object-cover"
                       onError={(e) => {
