@@ -27,7 +27,7 @@
     },
 
     /* Node.js support */
-    "types": ["node"]
+    "types": ["node", "vite/client"]
   },
   "include": ["src", "vite.config.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
