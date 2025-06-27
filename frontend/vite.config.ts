@@ -4,8 +4,8 @@ import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
-  // Only use proxy in development mode
-  const config = {
+  // Base configuration
+  const config: any = {
     plugins: [react()],
     resolve: {
       alias: {
