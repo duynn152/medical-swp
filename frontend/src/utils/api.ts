@@ -1,5 +1,11 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
 
+// Debug logging for production
+console.log('🔧 API Configuration:')
+console.log('VITE_API_URL:', import.meta.env.VITE_API_URL)
+console.log('Final API_BASE_URL:', API_BASE_URL)
+console.log('Environment MODE:', import.meta.env.MODE)
+
 export interface LoginRequest {
   usernameOrEmail: string
   password: string
