@@ -1,14 +1,11 @@
 #!/bin/bash
 
-# Build script for Render deployment
+# Build script for Render deployment (using Maven directly)
 
 echo "🔧 Starting build process..."
 
-# Make mvnw executable
-chmod +x mvnw
-
-echo "📦 Installing dependencies and building..."
-./mvnw clean package -DskipTests
+echo "📦 Installing dependencies and building with Maven..."
+mvn clean package -DskipTests -B
 
 echo "📁 Creating uploads directory..."
 mkdir -p uploads/blog-images
