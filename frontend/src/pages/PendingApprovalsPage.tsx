@@ -1,23 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Calendar, Clock, User, Phone, Mail, Building2, Check, X, AlertCircle, RefreshCw } from 'lucide-react'
-import { apiService } from '../utils/api'
+import { apiService, Appointment } from '../utils/api'
 import toast from 'react-hot-toast'
-
-interface Appointment {
-  id: number
-  fullName: string
-  phone: string
-  email: string
-  appointmentDate: string
-  appointmentTime: string
-  department: string
-  reason?: string
-  status: 'AWAITING_DOCTOR_APPROVAL'
-  notes?: string
-  createdAt: string
-  updatedAt: string
-  doctorNotifiedAt?: string
-}
 
 const PendingApprovalsPage = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([])

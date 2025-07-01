@@ -85,6 +85,7 @@ export interface Appointment {
   user?: User
   doctor?: User
   notes?: string
+  doctorNotifiedAt?: string
   createdAt: string
   updatedAt: string
 }

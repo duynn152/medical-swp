@@ -1,25 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Calendar, Clock, User, MapPin, Phone, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
-import { apiService } from '../utils/api'
+import { apiService, Appointment } from '../utils/api'
 import toast from 'react-hot-toast'
-
-interface Appointment {
-  id: number
-  fullName: string
-  phone: string
-  email: string
-  appointmentDate: string
-  appointmentTime: string
-  department: {
-    code: string
-    departmentName: string
-    specialtyName: string
-  } | string
-  reason?: string
-  status: 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED'
-  createdAt: string
-  updatedAt: string
-}
 
 const MyAppointmentsPage: React.FC = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([])
@@ -49,10 +31,18 @@ const MyAppointmentsPage: React.FC = () => {
         return 'bg-green-100 text-green-800 border-green-200'
       case 'PENDING':
         return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+      case 'AWAITING_DOCTOR_APPROVAL':
+        return 'bg-orange-100 text-orange-800 border-orange-200'
+      case 'PAYMENT_REQUESTED':
+        return 'bg-purple-100 text-purple-800 border-purple-200'
+      case 'PAID':
+        return 'bg-indigo-100 text-indigo-800 border-indigo-200'
       case 'COMPLETED':
         return 'bg-blue-100 text-blue-800 border-blue-200'
       case 'CANCELLED':
         return 'bg-red-100 text-red-800 border-red-200'
+      case 'NO_SHOW':
+        return 'bg-gray-100 text-gray-800 border-gray-200'
       default:
         return 'bg-gray-100 text-gray-800 border-gray-200'
     }
@@ -64,9 +54,17 @@ const MyAppointmentsPage: React.FC = () => {
         return <CheckCircle className="w-4 h-4" />
       case 'PENDING':
         return <AlertCircle className="w-4 h-4" />
+      case 'AWAITING_DOCTOR_APPROVAL':
+        return <AlertCircle className="w-4 h-4" />
+      case 'PAYMENT_REQUESTED':
+        return <AlertCircle className="w-4 h-4" />
+      case 'PAID':
+        return <CheckCircle className="w-4 h-4" />
       case 'COMPLETED':
         return <CheckCircle className="w-4 h-4" />
       case 'CANCELLED':
+        return <XCircle className="w-4 h-4" />
+      case 'NO_SHOW':
         return <XCircle className="w-4 h-4" />
       default:
         return <AlertCircle className="w-4 h-4" />
@@ -79,10 +77,18 @@ const MyAppointmentsPage: React.FC = () => {
         return 'Đã xác nhận'
       case 'PENDING':
         return 'Đang chờ'
+      case 'AWAITING_DOCTOR_APPROVAL':
+        return 'Chờ bác sĩ phê duyệt'
+      case 'PAYMENT_REQUESTED':
+        return 'Yêu cầu thanh toán'
+      case 'PAID':
+        return 'Đã thanh toán'
       case 'COMPLETED':
         return 'Đã hoàn thành'
       case 'CANCELLED':
         return 'Đã hủy'
+      case 'NO_SHOW':
+        return 'Không đến'
       default:
         return status
     }
@@ -97,9 +103,9 @@ const MyAppointmentsPage: React.FC = () => {
 
   const filteredAppointments = appointments.filter(appointment => {
     if (filter === 'all') return true
-    if (filter === 'upcoming') return ['PENDING', 'CONFIRMED'].includes(appointment.status)
+    if (filter === 'upcoming') return ['PENDING', 'AWAITING_DOCTOR_APPROVAL', 'CONFIRMED', 'PAYMENT_REQUESTED', 'PAID'].includes(appointment.status)
     if (filter === 'completed') return appointment.status === 'COMPLETED'
-    if (filter === 'cancelled') return appointment.status === 'CANCELLED'
+    if (filter === 'cancelled') return ['CANCELLED', 'NO_SHOW'].includes(appointment.status)
     return true
   })
 
@@ -147,9 +153,9 @@ const MyAppointmentsPage: React.FC = () => {
           <div className="flex space-x-1">
             {[
               { key: 'all', label: 'Tất cả', count: appointments.length },
-              { key: 'upcoming', label: 'Sắp tới', count: appointments.filter(a => ['PENDING', 'CONFIRMED'].includes(a.status)).length },
+              { key: 'upcoming', label: 'Sắp tới', count: appointments.filter(a => ['PENDING', 'AWAITING_DOCTOR_APPROVAL', 'CONFIRMED', 'PAYMENT_REQUESTED', 'PAID'].includes(a.status)).length },
               { key: 'completed', label: 'Đã hoàn thành', count: appointments.filter(a => a.status === 'COMPLETED').length },
-              { key: 'cancelled', label: 'Đã hủy', count: appointments.filter(a => a.status === 'CANCELLED').length }
+              { key: 'cancelled', label: 'Đã hủy', count: appointments.filter(a => ['CANCELLED', 'NO_SHOW'].includes(a.status)).length }
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -221,7 +227,7 @@ const MyAppointmentsPage: React.FC = () => {
                 )}
 
                 {/* Actions */}
-                {appointment.status === 'PENDING' && (
+                {['PENDING', 'AWAITING_DOCTOR_APPROVAL'].includes(appointment.status) && (
                   <div className="flex space-x-2">
                     <button
                       onClick={() => handleCancelAppointment(appointment.id)}
