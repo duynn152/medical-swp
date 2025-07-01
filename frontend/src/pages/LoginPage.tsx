@@ -46,7 +46,7 @@ const LoginPage = () => {
           navigate('/admin')
           break
         case 'PATIENT':
-          navigate('/admin') // Can be changed to patient dashboard later
+          navigate('/') // Redirect patient back to public homepage
           break
         default:
           navigate('/admin')

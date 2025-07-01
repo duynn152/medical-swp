@@ -15,13 +15,42 @@ const AppointmentPage = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitStatus, setSubmitStatus] = useState<{
-    type: 'success' | 'error' | null
+    type: 'success' | 'error' | 'payment' | null
     message: string
     appointmentId?: number
   }>({ type: null, message: '' })
 
   const [departments, setDepartments] = useState<DepartmentInfo[]>([])
   const [loadingDepartments, setLoadingDepartments] = useState(true)
+  const [processingPayment, setProcessingPayment] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [userInfo, setUserInfo] = useState<any>(null)
+
+  // Check authentication and auto-fill user info
+  useEffect(() => {
+    const token = localStorage.getItem('authToken')
+    const userInfoStr = localStorage.getItem('userInfo')
+    
+    if (token && userInfoStr) {
+      try {
+        const user = JSON.parse(userInfoStr)
+        if (user.role === 'PATIENT') {
+          setIsLoggedIn(true)
+          setUserInfo(user)
+          
+          // Auto-fill form with user information
+          setFormData(prev => ({
+            ...prev,
+            fullName: user.fullName || '',
+            email: user.email || '',
+            phone: user.phone || '' // This might be empty if not in profile
+          }))
+        }
+      } catch (error) {
+        console.error('Error parsing user info:', error)
+      }
+    }
+  }, [])
 
   // Fetch departments from API
   useEffect(() => {
@@ -196,6 +225,21 @@ const AppointmentPage = () => {
           </div>
         )}
 
+        {/* Login Status for Patients */}
+        {isLoggedIn && (
+          <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center space-x-3">
+              <CheckCircle className="w-6 h-6 text-blue-600" />
+              <div>
+                <p className="text-blue-800 font-medium">Bạn đã đăng nhập</p>
+                <p className="text-blue-700 text-sm">
+                  Thông tin cá nhân đã được tự động điền. Chào {userInfo?.fullName}!
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid lg:grid-cols-2 gap-12">
           {/* Form */}
           <div className="bg-white p-8 rounded-lg shadow-sm">
@@ -204,6 +248,11 @@ const AppointmentPage = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   <User className="w-4 h-4 inline mr-2" />
                   Họ và tên *
+                  {isLoggedIn && (
+                    <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                      Đã đăng nhập
+                    </span>
+                  )}
                 </label>
                 <input
                   type="text"
@@ -211,10 +260,19 @@ const AppointmentPage = () => {
                   required
                   value={formData.fullName}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Nhập họ và tên"
-                  disabled={isSubmitting}
+                  disabled={isLoggedIn || isSubmitting}
+                  className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    isLoggedIn 
+                      ? 'bg-gray-50 cursor-not-allowed text-gray-600' 
+                      : ''
+                  }`}
+                  placeholder={isLoggedIn ? "Thông tin đã được tự động điền" : "Nhập họ và tên"}
                 />
+                {isLoggedIn && (
+                  <p className="mt-1 text-sm text-blue-600">
+                    Thông tin được lấy từ tài khoản của bạn
+                  </p>
+                )}
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
@@ -222,6 +280,11 @@ const AppointmentPage = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Phone className="w-4 h-4 inline mr-2" />
                     Số điện thoại *
+                    {isLoggedIn && (
+                      <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                        Đã đăng nhập
+                      </span>
+                    )}
                   </label>
                   <input
                     type="tel"
@@ -229,26 +292,49 @@ const AppointmentPage = () => {
                     required
                     value={formData.phone}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="0123456789"
-                    disabled={isSubmitting}
+                    disabled={isLoggedIn || isSubmitting}
+                    className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      isLoggedIn 
+                        ? 'bg-gray-50 cursor-not-allowed text-gray-600' 
+                        : ''
+                    }`}
+                    placeholder={isLoggedIn ? "Số điện thoại đã được tự động điền" : "0123456789"}
                   />
+                  {isLoggedIn && (
+                    <p className="mt-1 text-sm text-blue-600">
+                      {formData.phone ? 'Số điện thoại từ tài khoản của bạn' : 'Chưa có số điện thoại trong tài khoản'}
+                    </p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Mail className="w-4 h-4 inline mr-2" />
                     Email
+                    {isLoggedIn && (
+                      <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                        Đã đăng nhập
+                      </span>
+                    )}
                   </label>
                   <input
                     type="email"
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="email@example.com"
-                    disabled={isSubmitting}
+                    disabled={isLoggedIn || isSubmitting}
+                    className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      isLoggedIn 
+                        ? 'bg-gray-50 cursor-not-allowed text-gray-600' 
+                        : ''
+                    }`}
+                    placeholder={isLoggedIn ? "Email đã được tự động điền" : "email@example.com"}
                   />
+                  {isLoggedIn && (
+                    <p className="mt-1 text-sm text-blue-600">
+                      Email từ tài khoản đăng nhập
+                    </p>
+                  )}
                 </div>
               </div>
 

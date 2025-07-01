@@ -14,7 +14,13 @@ import UsersPage from './pages/UsersPage'
 import BlogControlPage from './pages/BlogControlPage'
 import BookingManagerPage from './pages/BookingManagerPage'
 import PatientControlPage from './pages/PatientControlPage'
+import PendingApprovalsPage from './pages/PendingApprovalsPage'
 import LoginPage from './pages/LoginPage'
+// Import patient pages
+import ProfilePage from './pages/ProfilePage'
+import MyAppointmentsPage from './pages/MyAppointmentsPage'
+import MedicalHistoryPage from './pages/MedicalHistoryPage'
+import SettingsPage from './pages/SettingsPage'
 
 function App() {
   return (
@@ -31,6 +37,12 @@ function App() {
         <Route path="appointment" element={<AppointmentPage />} />
         <Route path="blog" element={<BlogPage />} />
         <Route path="blog/:id" element={<BlogDetailPage />} />
+        
+        {/* Patient-specific routes */}
+        <Route path="profile" element={<ProfilePage />} />
+        <Route path="my-appointments" element={<MyAppointmentsPage />} />
+        <Route path="medical-history" element={<MedicalHistoryPage />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
       
       {/* Auth Routes */}
@@ -47,6 +59,7 @@ function App() {
         <Route path="blogs" element={<BlogControlPage />} />
         <Route path="bookings" element={<BookingManagerPage />} />
         <Route path="patients" element={<PatientControlPage />} />
+        <Route path="pending-approvals" element={<PendingApprovalsPage />} />
       </Route>
     </Routes>
   )

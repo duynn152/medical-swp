@@ -12,7 +12,7 @@ interface Appointment {
   appointmentTime: string
   department: string
   reason?: string
-  status: 'PENDING' | 'CONFIRMED' | 'PAYMENT_REQUESTED' | 'PAID' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
+  status: 'PENDING' | 'AWAITING_DOCTOR_APPROVAL' | 'CONFIRMED' | 'PAYMENT_REQUESTED' | 'PAID' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
   notes?: string
   emailSent: boolean
   reminderSent: boolean
@@ -114,6 +114,7 @@ const BookingManagerPage = () => {
 
   const statusColors = {
     PENDING: 'bg-yellow-100 text-yellow-800',
+    AWAITING_DOCTOR_APPROVAL: 'bg-purple-100 text-purple-800',
     CONFIRMED: 'bg-blue-100 text-blue-800',
     PAYMENT_REQUESTED: 'bg-orange-100 text-orange-800',
     PAID: 'bg-purple-100 text-purple-800',
@@ -124,6 +125,7 @@ const BookingManagerPage = () => {
 
   const statusIcons = {
     PENDING: AlertCircle,
+    AWAITING_DOCTOR_APPROVAL: Clock,
     CONFIRMED: CheckCircle,
     PAYMENT_REQUESTED: TrendingUp,
     PAID: Check,
@@ -134,6 +136,7 @@ const BookingManagerPage = () => {
 
   const statusLabels = {
     PENDING: 'Chờ xác nhận',
+    AWAITING_DOCTOR_APPROVAL: 'Chờ bác sĩ phản hồi',
     CONFIRMED: 'Đã xác nhận',
     PAYMENT_REQUESTED: 'Yêu cầu thanh toán',
     PAID: 'Đã thanh toán',
@@ -242,7 +245,7 @@ const BookingManagerPage = () => {
 
     setConfirmingWithDoctor(true)
     try {
-      await apiService.confirmAppointmentWithDoctor(selectedAppointmentForConfirm.id, selectedDoctorId)
+      await apiService.assignDoctorToAppointment(selectedAppointmentForConfirm.id, selectedDoctorId)
       
       await fetchAppointments()
       await fetchStats()
@@ -251,10 +254,10 @@ const BookingManagerPage = () => {
       setSelectedAppointmentForConfirm(null)
       setSelectedDoctorId(null)
       
-      toast.success('Lịch hẹn đã được xác nhận và chỉ định bác sĩ')
+      toast.success('Bác sĩ đã được chỉ định. Chờ bác sĩ phản hồi.')
     } catch (error) {
-      console.error('Error confirming appointment with doctor:', error)
-      toast.error('Không thể xác nhận lịch hẹn')
+      console.error('Error assigning doctor to appointment:', error)
+      toast.error('Không thể chỉ định bác sĩ')
     } finally {
       setConfirmingWithDoctor(false)
     }
@@ -281,15 +284,38 @@ const BookingManagerPage = () => {
 
   const updateAppointmentStatus = async (id: number, status: string, reason?: string) => {
     try {
+      // Get the current appointment to validate workflow
+      const currentAppointment = appointments.find(apt => apt.id === id)
+      if (!currentAppointment) {
+        toast.error('Không tìm thấy lịch hẹn')
+        return
+      }
+
+      // Enforce workflow restrictions
+      const currentStatus = currentAppointment.status
+      
+      if (status === 'CONFIRMED' && currentStatus !== 'AWAITING_DOCTOR_APPROVAL') {
+        toast.error('Chỉ có thể confirm lịch hẹn đang chờ bác sĩ phản hồi')
+        return
+      }
+      
+      if (status === 'AWAITING_DOCTOR_APPROVAL' && currentStatus !== 'PENDING') {
+        toast.error('Chỉ có thể assign doctor cho lịch hẹn PENDING')
+        return
+      }
+      
+      if (status === 'PAYMENT_REQUESTED' && currentStatus !== 'CONFIRMED') {
+        toast.error('Chỉ có thể yêu cầu thanh toán sau khi đã confirm')
+        return
+      }
+
       // Handle status updates through appropriate API calls
-      if (status === 'CONFIRMED') {
-        await apiService.confirmAppointment(id)
-      } else if (status === 'CANCELLED') {
+      if (status === 'CANCELLED') {
         await apiService.cancelAppointment(id, reason || 'Cancelled by staff')
       } else {
-        // For other statuses, use the updateAppointment API
+        // For other status changes, use the general update API
         await apiService.updateAppointment(id, { 
-          status: status as 'PENDING' | 'CONFIRMED' | 'PAYMENT_REQUESTED' | 'PAID' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
+          status: status as 'PENDING' | 'AWAITING_DOCTOR_APPROVAL' | 'CONFIRMED' | 'PAYMENT_REQUESTED' | 'PAID' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
         })
       }
       
@@ -298,6 +324,7 @@ const BookingManagerPage = () => {
       
       const statusLabelsMap = {
         'PENDING': 'chờ xác nhận',
+        'AWAITING_DOCTOR_APPROVAL': 'chờ bác sĩ phản hồi',
         'CONFIRMED': 'xác nhận',
         'PAYMENT_REQUESTED': 'yêu cầu thanh toán',
         'PAID': 'đã thanh toán',
@@ -692,6 +719,7 @@ const BookingManagerPage = () => {
                 <option value="COMPLETED">Hoàn thành</option>
                 <option value="CANCELLED">Đã hủy</option>
                 <option value="NO_SHOW">Không đến</option>
+                <option value="AWAITING_DOCTOR_APPROVAL">Đang chờ xác nhận</option>
               </select>
             </div>
           </div>
@@ -869,6 +897,7 @@ const BookingManagerPage = () => {
                         <option value="COMPLETED">Hoàn thành</option>
                         <option value="CANCELLED">Đã hủy</option>
                         <option value="NO_SHOW">Không đến</option>
+                        <option value="AWAITING_DOCTOR_APPROVAL">Đang chờ xác nhận</option>
                       </select>
                     </td>
                     
@@ -899,18 +928,20 @@ const BookingManagerPage = () => {
                               onClick={() => {
                                 setSelectedAppointmentForConfirm(appointment)
                                 setShowDoctorModal(true)
+                                setShowDetailModal(false)
                               }}
-                              className="text-green-600 hover:text-green-900"
-                              title="Xác nhận"
+                              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
                             >
-                              <UserCheck className="w-4 h-4" />
+                              Chỉ định bác sĩ
                             </button>
                             <button
-                              onClick={() => updateAppointmentStatus(appointment.id, 'CANCELLED')}
-                              className="text-red-600 hover:text-red-900"
-                              title="Hủy lịch"
+                              onClick={() => {
+                                updateAppointmentStatus(appointment.id, 'CANCELLED')
+                                setShowDetailModal(false)
+                              }}
+                              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700"
                             >
-                              <X className="w-4 h-4" />
+                              Hủy lịch
                             </button>
                           </>
                         )}
@@ -1052,12 +1083,13 @@ const BookingManagerPage = () => {
                   <>
                     <button
                       onClick={() => {
-                        updateAppointmentStatus(selectedAppointment.id, 'CONFIRMED')
+                        setSelectedAppointmentForConfirm(selectedAppointment)
+                        setShowDoctorModal(true)
                         setShowDetailModal(false)
                       }}
                       className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
                     >
-                      Xác nhận
+                      Chỉ định bác sĩ
                     </button>
                     <button
                       onClick={() => {
@@ -1083,7 +1115,7 @@ const BookingManagerPage = () => {
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium text-gray-900">
-                  Chọn bác sĩ cho lịch hẹn #{selectedAppointmentForConfirm.id}
+                  Chỉ định bác sĩ cho lịch hẹn #{selectedAppointmentForConfirm.id}
                 </h3>
                 <button
                   onClick={() => {
@@ -1179,7 +1211,7 @@ const BookingManagerPage = () => {
                   )}
                   {getRelevantDoctors(selectedAppointmentForConfirm.department).length === 0 
                     ? 'Không có bác sĩ phù hợp' 
-                    : 'Xác nhận lịch hẹn'
+                    : 'Chỉ định bác sĩ'
                   }
                 </button>
               </div>

@@ -1,10 +1,53 @@
-import { Outlet, Link, useLocation } from 'react-router-dom'
-import { Heart, Menu, X } from 'lucide-react'
-import { useState } from 'react'
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
+import { Heart, Menu, X, User, LogOut, Calendar, FileText, Settings, ChevronDown } from 'lucide-react'
+import { useState, useEffect } from 'react'
 
 const PublicLayout = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false)
+  const [user, setUser] = useState<any>(null)
   const location = useLocation()
+  const navigate = useNavigate()
+
+  // Check authentication status
+  useEffect(() => {
+    const token = localStorage.getItem('authToken')
+    const userInfo = localStorage.getItem('userInfo')
+    
+    if (token && userInfo) {
+      try {
+        const userData = JSON.parse(userInfo)
+        setUser(userData)
+      } catch (error) {
+        // Invalid user info, clear storage
+        localStorage.removeItem('authToken')
+        localStorage.removeItem('userInfo')
+      }
+    }
+  }, [])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element
+      if (userDropdownOpen && !target.closest('.user-dropdown')) {
+        setUserDropdownOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [userDropdownOpen])
+
+  const handleLogout = () => {
+    localStorage.removeItem('authToken')
+    localStorage.removeItem('userInfo')
+    setUser(null)
+    setUserDropdownOpen(false)
+    navigate('/')
+  }
 
   const navigation = [
     { name: 'Trang chủ', href: '/' },
@@ -16,6 +59,25 @@ const PublicLayout = () => {
 
   const isCurrentPath = (path: string) => {
     return location.pathname === path
+  }
+
+  // Menu items for patient
+  const patientMenuItems = [
+    { name: 'Hồ sơ cá nhân', icon: User, href: '/profile' },
+    { name: 'Lịch hẹn của tôi', icon: Calendar, href: '/my-appointments' },
+    { name: 'Lịch sử khám', icon: FileText, href: '/medical-history' },
+    { name: 'Cài đặt', icon: Settings, href: '/settings' },
+  ]
+
+  // Menu items for other roles (admin, doctor, staff)
+  const adminMenuItems = [
+    { name: 'Dashboard', icon: Settings, href: '/admin' },
+  ]
+
+  // Get menu items based on user role
+  const getMenuItems = () => {
+    if (!user) return []
+    return user.role === 'PATIENT' ? patientMenuItems : adminMenuItems
   }
 
   return (
@@ -51,14 +113,70 @@ const PublicLayout = () => {
               ))}
             </nav>
 
-            {/* Login Button */}
+            {/* User Menu or Login Button */}
             <div className="hidden md:flex items-center space-x-4">
-              <Link
-                to="/login"
-                className="bg-pink-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-pink-700 transition-colors"
-              >
-                Đăng nhập
-              </Link>
+              {user ? (
+                // User is logged in - show avatar and dropdown
+                <div className="relative user-dropdown">
+                  <button
+                    onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                    className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 rounded-lg px-3 py-2 transition-colors"
+                  >
+                    <div className="w-8 h-8 bg-pink-600 rounded-full flex items-center justify-center">
+                      <span className="text-white text-sm font-medium">
+                        {user.fullName?.charAt(0).toUpperCase() || user.username?.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 max-w-24 truncate">
+                      {user.fullName || user.username}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${userDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {userDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 z-50">
+                      <div className="px-4 py-3 border-b border-gray-100">
+                        <p className="text-sm font-medium text-gray-900">{user.fullName || user.username}</p>
+                        <p className="text-sm text-gray-500">{user.email}</p>
+                        <p className="text-xs text-pink-600 bg-pink-50 px-2 py-1 rounded mt-1 inline-block">
+                          {user.role}
+                        </p>
+                      </div>
+                      <div className="py-1">
+                        {getMenuItems().map((item) => (
+                          <Link
+                            key={item.name}
+                            to={item.href}
+                            onClick={() => setUserDropdownOpen(false)}
+                            className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          >
+                            <item.icon className="w-4 h-4 mr-3 text-gray-400" />
+                            {item.name}
+                          </Link>
+                        ))}
+                        <div className="border-t border-gray-100 mt-1 pt-1">
+                          <button
+                            onClick={handleLogout}
+                            className="flex items-center w-full px-4 py-2 text-sm text-red-700 hover:bg-red-50"
+                          >
+                            <LogOut className="w-4 h-4 mr-3 text-red-400" />
+                            Đăng xuất
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // User is not logged in - show login button
+                <Link
+                  to="/login"
+                  className="bg-pink-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-pink-700 transition-colors"
+                >
+                  Đăng nhập
+                </Link>
+              )}
             </div>
 
             {/* Mobile menu button */}
@@ -94,13 +212,49 @@ const PublicLayout = () => {
                     {item.name}
                   </Link>
                 ))}
-                <Link
-                  to="/login"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="bg-pink-600 text-white px-4 py-2 rounded-lg font-medium text-center hover:bg-pink-700 transition-colors"
-                >
-                  Đăng nhập
-                </Link>
+                
+                {user ? (
+                  // Mobile user menu for all logged-in users
+                  <div className="border-t border-gray-200 pt-4 mt-4">
+                    <div className="px-2 py-2 bg-gray-50 rounded-lg mb-3">
+                      <p className="text-sm font-medium text-gray-900">{user.fullName || user.username}</p>
+                      <p className="text-sm text-gray-500">{user.email}</p>
+                      <p className="text-xs text-pink-600 bg-pink-50 px-2 py-1 rounded mt-1 inline-block">
+                        {user.role}
+                      </p>
+                    </div>
+                    {getMenuItems().map((item) => (
+                      <Link
+                        key={item.name}
+                        to={item.href}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="flex items-center px-2 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded"
+                      >
+                        <item.icon className="w-4 h-4 mr-3 text-gray-400" />
+                        {item.name}
+                      </Link>
+                    ))}
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false)
+                        handleLogout()
+                      }}
+                      className="flex items-center w-full px-2 py-2 text-sm text-red-700 hover:bg-red-50 rounded mt-2"
+                    >
+                      <LogOut className="w-4 h-4 mr-3 text-red-400" />
+                      Đăng xuất
+                    </button>
+                  </div>
+                ) : (
+                  // Mobile login button
+                  <Link
+                    to="/login"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="bg-pink-600 text-white px-4 py-2 rounded-lg font-medium text-center hover:bg-pink-700 transition-colors"
+                  >
+                    Đăng nhập
+                  </Link>
+                )}
               </div>
             </div>
           )}

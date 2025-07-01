@@ -1,6 +1,9 @@
 package com.medicalswp.controller;
 
 import com.medicalswp.entity.Appointment;
+import com.medicalswp.entity.User;
+import com.medicalswp.repository.UserRepository;
+import com.medicalswp.repository.AppointmentRepository;
 import com.medicalswp.service.AppointmentService;
 import com.medicalswp.service.AppointmentService.AppointmentStats;
 import com.medicalswp.service.EmailService;
@@ -11,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
@@ -34,6 +38,15 @@ public class AppointmentController {
     
     @Autowired
     private EmailService emailService;
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Autowired
+    private AppointmentRepository appointmentRepository;
+    
+    @Autowired
+    private PasswordEncoder passwordEncoder;
     
     /**
      * PUBLIC: Create appointment (no authentication required)
@@ -249,11 +262,91 @@ public class AppointmentController {
     @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
     public ResponseEntity<?> confirmAppointment(@PathVariable Long id) {
         try {
+            // Get appointment first
+            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
+            if (!appointmentOpt.isPresent()) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Appointment not found with ID: " + id);
+                return ResponseEntity.notFound().build();
+            }
+            
+            Appointment appointment = appointmentOpt.get();
+            
+            // Confirm the appointment
             Appointment confirmedAppointment = appointmentService.confirmAppointment(id);
             
             Map<String, Object> response = new HashMap<>();
             response.put("message", "Lịch hẹn đã được xác nhận");
             response.put("appointment", confirmedAppointment);
+            
+            // Auto-create patient account if email is provided and account doesn't exist
+            String email = appointment.getEmail();
+            if (email != null && !email.trim().isEmpty()) {
+                if (!userRepository.existsByEmail(email)) {
+                    try {
+                        // Create new patient account
+                        User newPatient = new User();
+                        newPatient.setUsername(email);
+                        newPatient.setEmail(email);
+                        newPatient.setFullName(appointment.getFullName());
+                        newPatient.setPassword(passwordEncoder.encode("123456"));
+                        newPatient.setRole(User.Role.PATIENT);
+                        newPatient.setActive(true);
+                        
+                        User savedPatient = userRepository.save(newPatient);
+                        
+                        response.put("patientAccountCreated", true);
+                        response.put("patientAccount", Map.of(
+                            "username", savedPatient.getUsername(),
+                            "temporaryPassword", "123456",
+                            "message", "Tài khoản bệnh nhân đã được tạo tự động"
+                        ));
+                        
+                        logger.info("=== Patient account auto-created when confirming appointment: {} for email: {} ===", id, email);
+                        
+                        // Send welcome email with login credentials
+                        try {
+                            String emailContent = String.format(
+                                "Chào %s,\n\n" +
+                                "Lịch hẹn của bạn tại Florism Care đã được xác nhận.\n\n" +
+                                "Tài khoản của bạn đã được tạo tự động:\n" +
+                                "- Username: %s\n" +
+                                "- Password: 123456\n\n" +
+                                "Vui lòng đăng nhập tại website để theo dõi lịch hẹn và thay đổi mật khẩu.\n\n" +
+                                "Thông tin lịch hẹn:\n" +
+                                "- Ngày: %s\n" +
+                                "- Giờ: %s\n" +
+                                "- Khoa: %s\n\n" +
+                                "Trân trọng,\nFlorism Care Team",
+                                appointment.getFullName(), 
+                                email,
+                                appointment.getAppointmentDate(),
+                                appointment.getAppointmentTime(),
+                                appointment.getDepartment().getDepartmentName()
+                            );
+                            
+                            emailService.sendSimpleEmail(
+                                email,
+                                "Xác nhận lịch hẹn & Tài khoản Florism Care",
+                                emailContent
+                            );
+                        } catch (Exception emailError) {
+                            logger.error("Failed to send confirmation email to: {}", email, emailError);
+                        }
+                        
+                    } catch (Exception e) {
+                        logger.error("Error creating patient account when confirming appointment: {} for email: {}", id, email, e);
+                        response.put("patientAccountCreated", false);
+                        response.put("patientAccountError", "Có lỗi khi tạo tài khoản bệnh nhân: " + e.getMessage());
+                    }
+                } else {
+                    response.put("patientAccountCreated", false);
+                    response.put("patientAccountMessage", "Tài khoản với email này đã tồn tại");
+                }
+            } else {
+                response.put("patientAccountCreated", false);
+                response.put("patientAccountMessage", "Không có email để tạo tài khoản");
+            }
             
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
@@ -520,6 +613,621 @@ public class AppointmentController {
         } catch (Exception e) {
             logger.error("Error fetching doctor's patient appointments", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * ADMIN: Handle successful payment and automatically create a patient account
+     */
+    @PostMapping("/{id}/handle-payment")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
+    public ResponseEntity<?> handlePayment(@PathVariable Long id, @RequestBody Map<String, String> request) {
+        try {
+            String paymentStatus = request.get("status");
+            if (paymentStatus == null || paymentStatus.trim().isEmpty()) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Payment status is required");
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            // Get appointment
+            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
+            if (!appointmentOpt.isPresent()) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Appointment not found with ID: " + id);
+                return ResponseEntity.notFound().build();
+            }
+            
+            Appointment appointment = appointmentOpt.get();
+            
+            Map<String, Object> response = new HashMap<>();
+            
+            // If payment is successful, create patient account
+            if ("PAID".equalsIgnoreCase(paymentStatus)) {
+                String email = appointment.getEmail();
+                
+                if (email != null && !email.trim().isEmpty()) {
+                    // Check if user already exists
+                    if (!userRepository.existsByEmail(email)) {
+                        try {
+                            // Create new patient account
+                            User newPatient = new User();
+                            newPatient.setUsername(email);
+                            newPatient.setEmail(email);
+                            newPatient.setFullName(appointment.getFullName());
+                            newPatient.setPassword(passwordEncoder.encode("123456"));
+                            newPatient.setRole(User.Role.PATIENT);
+                            newPatient.setActive(true);
+                            
+                            User savedPatient = userRepository.save(newPatient);
+                            
+                            response.put("patientAccountCreated", true);
+                            response.put("patientAccount", Map.of(
+                                "username", savedPatient.getUsername(),
+                                "temporaryPassword", "123456",
+                                "message", "Tài khoản bệnh nhân đã được tạo thành công"
+                            ));
+                            
+                            logger.info("=== Patient account created for email: {} ===", email);
+                        } catch (Exception e) {
+                            logger.error("Error creating patient account for email: {}", email, e);
+                            response.put("patientAccountCreated", false);
+                            response.put("patientAccountError", "Có lỗi khi tạo tài khoản bệnh nhân: " + e.getMessage());
+                        }
+                    } else {
+                        response.put("patientAccountCreated", false);
+                        response.put("patientAccountMessage", "Tài khoản với email này đã tồn tại");
+                    }
+                } else {
+                    response.put("patientAccountCreated", false);
+                    response.put("patientAccountMessage", "Không có email để tạo tài khoản");
+                }
+                
+                // Update appointment status to CONFIRMED after successful payment
+                appointment = appointmentService.confirmAppointment(id);
+                response.put("message", "Thanh toán thành công và lịch hẹn đã được xác nhận");
+            } else {
+                response.put("message", "Payment status updated: " + paymentStatus);
+            }
+            
+            response.put("appointment", appointment);
+            
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            logger.error("Error handling payment: {}", id, e);
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "Có lỗi xảy ra khi xử lý thanh toán: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+    
+    /**
+     * PUBLIC: Complete payment and automatically create patient account
+     */
+    @PostMapping("/public/{id}/complete-payment")
+    public ResponseEntity<?> completePayment(@PathVariable Long id, @RequestBody Map<String, Object> request) {
+        try {
+            logger.info("=== Processing payment completion for appointment: {} ===", id);
+            
+            // Get appointment
+            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
+            if (!appointmentOpt.isPresent()) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Appointment not found with ID: " + id);
+                return ResponseEntity.notFound().build();
+            }
+            
+            Appointment appointment = appointmentOpt.get();
+            String email = appointment.getEmail();
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("appointmentId", id);
+            response.put("message", "Thanh toán thành công!");
+            
+            // Create patient account if email is provided and account doesn't exist
+            if (email != null && !email.trim().isEmpty()) {
+                if (!userRepository.existsByEmail(email)) {
+                    try {
+                        // Create new patient account
+                        User newPatient = new User();
+                        newPatient.setUsername(email);
+                        newPatient.setEmail(email);
+                        newPatient.setFullName(appointment.getFullName());
+                        newPatient.setPassword(passwordEncoder.encode("123456"));
+                        newPatient.setRole(User.Role.PATIENT);
+                        newPatient.setActive(true);
+                        
+                        User savedPatient = userRepository.save(newPatient);
+                        
+                        response.put("accountCreated", true);
+                        response.put("loginCredentials", Map.of(
+                            "username", savedPatient.getUsername(),
+                            "password", "123456",
+                            "message", "Tài khoản của bạn đã được tạo! Bạn có thể đăng nhập để theo dõi lịch hẹn."
+                        ));
+                        
+                        logger.info("=== Patient account created successfully for email: {} ===", email);
+                        
+                        // Send welcome email with login credentials
+                        try {
+                            String emailContent = String.format(
+                                "Chào %s,\n\n" +
+                                "Cảm ơn bạn đã đặt lịch hẹn tại Florism Care.\n\n" +
+                                "Tài khoản của bạn đã được tạo thành công:\n" +
+                                "- Username: %s\n" +
+                                "- Password: 123456\n\n" +
+                                "Vui lòng đăng nhập và thay đổi mật khẩu để bảo mật tài khoản.\n\n" +
+                                "Trân trọng,\nFlorism Care Team",
+                                appointment.getFullName(), email
+                            );
+                            
+                            emailService.sendSimpleEmail(
+                                email,
+                                "Tài khoản của bạn tại Florism Care",
+                                emailContent
+                            );
+                        } catch (Exception emailError) {
+                            logger.error("Failed to send welcome email to: {}", email, emailError);
+                        }
+                        
+                    } catch (Exception e) {
+                        logger.error("Error creating patient account for email: {}", email, e);
+                        response.put("accountCreated", false);
+                        response.put("accountError", "Có lỗi khi tạo tài khoản: " + e.getMessage());
+                    }
+                } else {
+                    response.put("accountCreated", false);
+                    response.put("accountMessage", "Tài khoản với email này đã tồn tại. Bạn có thể đăng nhập ngay.");
+                }
+            }
+            
+            // Confirm the appointment after successful payment
+            try {
+                appointment = appointmentService.confirmAppointment(id);
+                response.put("appointmentConfirmed", true);
+                response.put("appointment", appointment);
+            } catch (Exception e) {
+                logger.error("Error confirming appointment after payment: {}", id, e);
+                response.put("appointmentConfirmed", false);
+                response.put("confirmationError", "Lỗi xác nhận lịch hẹn: " + e.getMessage());
+            }
+            
+            logger.info("=== Payment completed successfully for appointment: {} ===", id);
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            logger.error("Error completing payment for appointment: {}", id, e);
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "Có lỗi xảy ra khi xử lý thanh toán: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+    
+    /**
+     * PATIENT: Get appointments for current patient
+     */
+    @GetMapping("/my-appointments")
+    @PreAuthorize("hasRole('PATIENT')")
+    public ResponseEntity<List<Appointment>> getMyAppointments(Authentication authentication) {
+        try {
+            String username = authentication.getName();
+            // Get user's email from username (since username = email for patients)
+            List<Appointment> appointments = appointmentRepository.findByEmailContainingIgnoreCase(username);
+            return ResponseEntity.ok(appointments);
+        } catch (Exception e) {
+            logger.error("Error fetching patient appointments for user: {}", authentication.getName(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * PATIENT: Get medical history for current patient
+     */
+    @GetMapping("/my-medical-history")
+    @PreAuthorize("hasRole('PATIENT')")
+    public ResponseEntity<List<Appointment>> getMyMedicalHistory(Authentication authentication) {
+        try {
+            String username = authentication.getName();
+            // Get completed appointments as medical history
+            List<Appointment> completedAppointments = appointmentRepository.findByEmailContainingIgnoreCase(username)
+                .stream()
+                .filter(appointment -> appointment.getStatus() == Appointment.AppointmentStatus.COMPLETED)
+                .sorted((a, b) -> b.getAppointmentDate().compareTo(a.getAppointmentDate())) // Sort by date desc
+                .toList();
+            
+            return ResponseEntity.ok(completedAppointments);
+        } catch (Exception e) {
+            logger.error("Error fetching patient medical history for user: {}", authentication.getName(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * STAFF/ADMIN: Assign doctor to appointment (Step 2 of workflow)
+     * This replaces the old confirm-with-doctor endpoint with clearer logic
+     */
+    @PutMapping("/{id}/assign-doctor")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('STAFF')")
+    public ResponseEntity<?> assignDoctorToAppointment(@PathVariable Long id, @RequestBody Map<String, Long> request) {
+        try {
+            Long doctorId = request.get("doctorId");
+            if (doctorId == null) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Doctor ID is required");
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            // Get appointment
+            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
+            if (!appointmentOpt.isPresent()) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Appointment not found with ID: " + id);
+                return ResponseEntity.notFound().build();
+            }
+            
+            Appointment appointment = appointmentOpt.get();
+            
+            // Validate workflow: can only assign doctor if status is PENDING
+            if (appointment.getStatus() != Appointment.AppointmentStatus.PENDING) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Can only assign doctor to PENDING appointments. Current status: " + appointment.getStatus());
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            // Validate doctor exists and has DOCTOR role
+            Optional<User> doctorOptional = userRepository.findById(doctorId);
+            if (!doctorOptional.isPresent()) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Doctor not found with ID: " + doctorId);
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            User doctor = doctorOptional.get();
+            if (doctor.getRole() != User.Role.DOCTOR) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "User with ID " + doctorId + " is not a doctor");
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            // Update appointment to AWAITING_DOCTOR_APPROVAL
+            appointment.setStatus(Appointment.AppointmentStatus.AWAITING_DOCTOR_APPROVAL);
+            appointment.setDoctor(doctor);
+            appointment.setDoctorNotifiedAt(java.time.LocalDateTime.now());
+            
+            Appointment updatedAppointment = appointmentRepository.save(appointment);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Bác sĩ đã được chỉ định. Chờ bác sĩ phản hồi.");
+            response.put("appointment", updatedAppointment);
+            
+            // TODO: Send notification to doctor (email/system notification)
+            logger.info("Doctor assigned to appointment {} and notified: {}", id, doctor.getEmail());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error assigning doctor to appointment: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * DOCTOR: Accept appointment (Step 3a of workflow)
+     */
+    @PutMapping("/{id}/doctor-accept")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<?> doctorAcceptAppointment(@PathVariable Long id, @RequestBody Map<String, String> request, Authentication authentication) {
+        try {
+            String response = request.getOrDefault("response", "Accepted by doctor");
+            
+            // Get appointment
+            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
+            if (!appointmentOpt.isPresent()) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Appointment not found with ID: " + id);
+                return ResponseEntity.notFound().build();
+            }
+            
+            Appointment appointment = appointmentOpt.get();
+            
+            // Validate workflow: can only accept if status is AWAITING_DOCTOR_APPROVAL
+            if (appointment.getStatus() != Appointment.AppointmentStatus.AWAITING_DOCTOR_APPROVAL) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Can only accept appointments with AWAITING_DOCTOR_APPROVAL status. Current status: " + appointment.getStatus());
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            // Validate that this doctor is assigned to this appointment
+            String doctorUsername = authentication.getName();
+            // Find current doctor by username
+            Optional<User> currentDoctorOpt = userRepository.findByUsername(doctorUsername);
+            if (!currentDoctorOpt.isPresent()) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Doctor not found");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+            }
+            
+            User currentDoctor = currentDoctorOpt.get();
+            if (appointment.getDoctor() == null || !appointment.getDoctor().getId().equals(currentDoctor.getId())) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "You are not assigned to this appointment");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+            }
+            
+            // Update appointment to CONFIRMED
+            appointment.setStatus(Appointment.AppointmentStatus.CONFIRMED);
+            appointment.setDoctorRespondedAt(java.time.LocalDateTime.now());
+            appointment.setDoctorResponse("ACCEPTED: " + response);
+            
+            Appointment confirmedAppointment = appointmentRepository.save(appointment);
+            
+            Map<String, Object> responseMap = new HashMap<>();
+            responseMap.put("message", "Lịch hẹn đã được chấp nhận");
+            responseMap.put("appointment", confirmedAppointment);
+            
+            logger.info("Doctor {} accepted appointment {}", doctorUsername, id);
+            
+            return ResponseEntity.ok(responseMap);
+        } catch (Exception e) {
+            logger.error("Error accepting appointment: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * DOCTOR: Decline appointment (Step 3b of workflow)
+     */
+    @PutMapping("/{id}/doctor-decline")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<?> doctorDeclineAppointment(@PathVariable Long id, @RequestBody Map<String, String> request, Authentication authentication) {
+        try {
+            String reason = request.getOrDefault("reason", "Declined by doctor");
+            
+            // Get appointment
+            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
+            if (!appointmentOpt.isPresent()) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Appointment not found with ID: " + id);
+                return ResponseEntity.notFound().build();
+            }
+            
+            Appointment appointment = appointmentOpt.get();
+            
+            // Validate workflow: can only decline if status is AWAITING_DOCTOR_APPROVAL
+            if (appointment.getStatus() != Appointment.AppointmentStatus.AWAITING_DOCTOR_APPROVAL) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Can only decline appointments with AWAITING_DOCTOR_APPROVAL status. Current status: " + appointment.getStatus());
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            // Validate that this doctor is assigned to this appointment
+            String doctorUsername = authentication.getName();
+            // Find current doctor by username
+            Optional<User> currentDoctorOpt = userRepository.findByUsername(doctorUsername);
+            if (!currentDoctorOpt.isPresent()) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Doctor not found");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+            }
+            
+            User currentDoctor = currentDoctorOpt.get();
+            if (appointment.getDoctor() == null || !appointment.getDoctor().getId().equals(currentDoctor.getId())) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "You are not assigned to this appointment");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+            }
+            
+            // Update appointment back to PENDING and clear doctor assignment
+            appointment.setStatus(Appointment.AppointmentStatus.PENDING);
+            appointment.setDoctor(null);
+            appointment.setDoctorRespondedAt(java.time.LocalDateTime.now());
+            appointment.setDoctorResponse("DECLINED: " + reason);
+            appointment.setDoctorNotifiedAt(null); // Clear notification time
+            
+            Appointment declinedAppointment = appointmentRepository.save(appointment);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Lịch hẹn đã được từ chối. Trở về trạng thái chờ staff xử lý.");
+            response.put("appointment", declinedAppointment);
+            
+            logger.info("Doctor {} declined appointment {} with reason: {}", doctorUsername, id, reason);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error declining appointment: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * TEST: Simple test endpoint for authentication
+     */
+    @GetMapping("/test-auth")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<String> testAuthEndpoint() {
+        return ResponseEntity.ok("Authentication working for DOCTOR role");
+    }
+    
+    /**
+     * DOCTOR: Get appointments pending my approval
+     */
+    @GetMapping("/pending-my-approval")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<List<Appointment>> getAppointmentsPendingMyApproval(Authentication authentication) {
+        try {
+            String doctorUsername = authentication.getName();
+            Optional<User> doctorOptional = userRepository.findByUsername(doctorUsername);
+            
+            if (!doctorOptional.isPresent()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            User doctor = doctorOptional.get();
+            List<Appointment> pendingAppointments = appointmentRepository.findByDoctorAndStatus(
+                doctor, 
+                Appointment.AppointmentStatus.AWAITING_DOCTOR_APPROVAL
+            );
+            
+            return ResponseEntity.ok(pendingAppointments);
+        } catch (Exception e) {
+            logger.error("Error fetching appointments pending doctor approval", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    @GetMapping("/test-pending-approval")
+    public ResponseEntity<List<Appointment>> testGetAppointmentsPendingApproval() {
+        try {
+            // Find all appointments with AWAITING_DOCTOR_APPROVAL status
+            List<Appointment> pendingAppointments = appointmentRepository.findByStatus(
+                Appointment.AppointmentStatus.AWAITING_DOCTOR_APPROVAL
+            );
+            
+            return ResponseEntity.ok(pendingAppointments);
+        } catch (Exception e) {
+            logger.error("Error fetching appointments pending doctor approval", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    @GetMapping("/test-pending-my-approval")
+    public ResponseEntity<List<Appointment>> testGetAppointmentsPendingMyApproval(@RequestParam Long doctorId) {
+        try {
+            // Find doctor by ID
+            Optional<User> doctorOptional = userRepository.findById(doctorId);
+            
+            if (!doctorOptional.isPresent()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            User doctor = doctorOptional.get();
+            List<Appointment> pendingAppointments = appointmentRepository.findByDoctorAndStatus(
+                doctor, 
+                Appointment.AppointmentStatus.AWAITING_DOCTOR_APPROVAL
+            );
+            
+            return ResponseEntity.ok(pendingAppointments);
+        } catch (Exception e) {
+            logger.error("Error fetching appointments pending doctor approval", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    @PostMapping("/test-create-doctor")
+    public ResponseEntity<?> testCreateDoctor(@RequestBody Map<String, String> request) {
+        try {
+            String username = request.getOrDefault("username", "testdoctor");
+            String email = request.getOrDefault("email", "testdoctor@test.com");
+            String password = request.getOrDefault("password", "123456");
+            String fullName = request.getOrDefault("fullName", "Test Doctor");
+            
+            // Check if user already exists
+            if (userRepository.existsByEmail(email) || userRepository.existsByUsername(username)) {
+                // Update existing user's password
+                Optional<User> userOpt = userRepository.findByEmail(email);
+                if (!userOpt.isPresent()) {
+                    userOpt = userRepository.findByUsername(username);
+                }
+                
+                if (userOpt.isPresent()) {
+                    User user = userOpt.get();
+                    user.setPassword(passwordEncoder.encode(password));
+                    User updatedUser = userRepository.save(user);
+                    
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("message", "Doctor password updated");
+                    response.put("username", updatedUser.getUsername());
+                    response.put("email", updatedUser.getEmail());
+                    response.put("password", password); // For testing only
+                    return ResponseEntity.ok(response);
+                }
+            }
+            
+            // Create new doctor
+            User newDoctor = new User();
+            newDoctor.setUsername(username);
+            newDoctor.setEmail(email);
+            newDoctor.setPassword(passwordEncoder.encode(password));
+            newDoctor.setFullName(fullName);
+            newDoctor.setBirth(java.time.LocalDate.of(1990, 1, 1));
+            newDoctor.setGender(User.Gender.MALE);
+            newDoctor.setRole(User.Role.DOCTOR);
+            newDoctor.setSpecialty(User.MedicalSpecialty.NEUROLOGY);
+            newDoctor.setActive(true);
+            
+            User savedDoctor = userRepository.save(newDoctor);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Doctor created successfully");
+            response.put("username", savedDoctor.getUsername());
+            response.put("email", savedDoctor.getEmail());
+            response.put("password", password); // For testing only
+            response.put("id", savedDoctor.getId());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error creating test doctor", e);
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "Failed to create doctor: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+    
+    @PostMapping("/test-create-pending-appointment")
+    public ResponseEntity<?> testCreatePendingAppointment(@RequestBody Map<String, Object> request) {
+        try {
+            Long doctorId = Long.valueOf(request.getOrDefault("doctorId", "7").toString());
+            String patientName = request.getOrDefault("patientName", "Test Patient").toString();
+            String patientEmail = request.getOrDefault("patientEmail", "testpatient@test.com").toString();
+            String patientPhone = request.getOrDefault("patientPhone", "0123456789").toString();
+            
+            // Find doctor
+            Optional<User> doctorOpt = userRepository.findById(doctorId);
+            if (!doctorOpt.isPresent()) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Doctor not found with ID: " + doctorId);
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            User doctor = doctorOpt.get();
+            
+            // Create new appointment
+            Appointment appointment = new Appointment();
+            appointment.setFullName(patientName);
+            appointment.setPhone(patientPhone);
+            appointment.setEmail(patientEmail);
+            appointment.setAppointmentDate(java.time.LocalDate.now().plusDays(7)); // Next week
+            appointment.setAppointmentTime(java.time.LocalTime.of(10, 0)); // 10:00 AM
+            appointment.setDepartment(Appointment.Department.NEUROLOGY);
+            appointment.setReason("Test appointment for pending approval");
+            appointment.setStatus(Appointment.AppointmentStatus.AWAITING_DOCTOR_APPROVAL);
+            appointment.setDoctor(doctor);
+            appointment.setDoctorNotifiedAt(java.time.LocalDateTime.now());
+            appointment.setEmailSent(false);
+            appointment.setReminderSent(false);
+            appointment.setPaymentRequested(false);
+            appointment.setPaymentCompleted(false);
+            
+            Appointment savedAppointment = appointmentRepository.save(appointment);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Test appointment created successfully");
+            response.put("appointmentId", savedAppointment.getId());
+            response.put("patientName", savedAppointment.getFullName());
+            response.put("doctorName", doctor.getFullName());
+            response.put("status", savedAppointment.getStatus());
+            response.put("appointmentDate", savedAppointment.getAppointmentDate().toString());
+            response.put("appointmentTime", savedAppointment.getAppointmentTime().toString());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error creating test appointment", e);
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "Failed to create appointment: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }
     

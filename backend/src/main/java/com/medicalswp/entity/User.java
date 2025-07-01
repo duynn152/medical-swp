@@ -49,6 +49,9 @@ public class User {
     @Enumerated(EnumType.STRING)
     private Role role = Role.PATIENT;
     
+    // Phone number
+    private String phone;
+    
     // Medical specialty for doctors
     @Enumerated(EnumType.STRING)
     private MedicalSpecialty specialty;
@@ -162,6 +165,14 @@ public class User {
     
     public void setRole(Role role) {
         this.role = role;
+    }
+    
+    public String getPhone() {
+        return phone;
+    }
+    
+    public void setPhone(String phone) {
+        this.phone = phone;
     }
     
     public MedicalSpecialty getSpecialty() {

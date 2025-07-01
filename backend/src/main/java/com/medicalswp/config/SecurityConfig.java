@@ -57,11 +57,18 @@ public class SecurityConfig implements WebMvcConfigurer {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // Allow public access to comments FIRST
+                .requestMatchers("/comments/**").permitAll()
+                
                 .requestMatchers("/health", "/actuator/**").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/auth/**").permitAll()
                 .requestMatchers("/public/**").permitAll()
                 .requestMatchers("/uploads/**").permitAll()
+                
+                // Allow public access to comments (GET and POST) including reactions and replies
+                .requestMatchers(HttpMethod.GET, "/comments/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/comments/**").permitAll()
                 
                 // Allow public access to published blog content
                 .requestMatchers(HttpMethod.GET, "/blogs/published", "/blogs/featured", "/blogs/category/**", "/blogs/search").permitAll()
@@ -72,12 +79,19 @@ public class SecurityConfig implements WebMvcConfigurer {
                 // Temporarily allow appointments access for testing
                 .requestMatchers(HttpMethod.GET, "/appointments/**").permitAll()
                 .requestMatchers(HttpMethod.PUT, "/appointments/*/confirm-with-doctor").permitAll()
+                .requestMatchers(HttpMethod.PUT, "/appointments/*/doctor-accept").permitAll()
+                .requestMatchers(HttpMethod.PUT, "/appointments/*/doctor-decline").permitAll()
+                .requestMatchers(HttpMethod.POST, "/appointments/test-create-doctor").permitAll()
+                .requestMatchers(HttpMethod.POST, "/appointments/test-create-pending-appointment").permitAll()
                 
                 // All other blog operations require authentication with proper roles
                 .requestMatchers(HttpMethod.GET, "/blogs").hasAnyAuthority("ROLE_ADMIN", "ROLE_DOCTOR", "ROLE_STAFF")
                 .requestMatchers(HttpMethod.POST, "/blogs/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_DOCTOR", "ROLE_STAFF")
                 .requestMatchers(HttpMethod.PUT, "/blogs/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_DOCTOR", "ROLE_STAFF")
                 .requestMatchers(HttpMethod.DELETE, "/blogs/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_DOCTOR", "ROLE_STAFF")
+                
+                // Comment admin operations require authentication
+                .requestMatchers("/comments/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_DOCTOR", "ROLE_STAFF")
                 
                 // User management - admin only
                 .requestMatchers("/users/**").hasAuthority("ROLE_ADMIN")

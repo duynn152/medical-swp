@@ -36,6 +36,9 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     // Find appointments by doctor
     List<Appointment> findByDoctor(User doctor);
     
+    // Find appointments by doctor and status (for workflow)
+    List<Appointment> findByDoctorAndStatus(User doctor, Appointment.AppointmentStatus status);
+    
     // Find appointments in date range
     List<Appointment> findByAppointmentDateBetween(LocalDate startDate, LocalDate endDate);
     

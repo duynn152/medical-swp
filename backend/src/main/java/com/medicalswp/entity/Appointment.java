@@ -69,6 +69,14 @@ public class Appointment {
     
     private LocalDateTime paymentCompletedAt;
     
+    // Doctor workflow fields
+    private LocalDateTime doctorNotifiedAt;
+    
+    private LocalDateTime doctorRespondedAt;
+    
+    @Size(max = 500)
+    private String doctorResponse; // Accept/Decline reason
+    
     // Reference to user if registered
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
@@ -274,14 +282,40 @@ public class Appointment {
         this.paymentCompletedAt = paymentCompletedAt;
     }
     
+    // Doctor workflow getters and setters
+    public LocalDateTime getDoctorNotifiedAt() {
+        return doctorNotifiedAt;
+    }
+    
+    public void setDoctorNotifiedAt(LocalDateTime doctorNotifiedAt) {
+        this.doctorNotifiedAt = doctorNotifiedAt;
+    }
+    
+    public LocalDateTime getDoctorRespondedAt() {
+        return doctorRespondedAt;
+    }
+    
+    public void setDoctorRespondedAt(LocalDateTime doctorRespondedAt) {
+        this.doctorRespondedAt = doctorRespondedAt;
+    }
+    
+    public String getDoctorResponse() {
+        return doctorResponse;
+    }
+    
+    public void setDoctorResponse(String doctorResponse) {
+        this.doctorResponse = doctorResponse;
+    }
+    
     public enum AppointmentStatus {
-        PENDING,           // Chờ xác nhận
-        CONFIRMED,         // Đã xác nhận
-        PAYMENT_REQUESTED, // Yêu cầu thanh toán
-        PAID,              // Đã thanh toán
-        CANCELLED,         // Đã hủy
-        COMPLETED,         // Đã hoàn thành
-        NO_SHOW            // Không đến
+        PENDING,                    // User đặt lịch, chờ staff xem xét
+        AWAITING_DOCTOR_APPROVAL,   // Staff đã assign doctor, chờ doctor phản hồi
+        CONFIRMED,                  // Doctor đã accept, lịch hẹn được confirm
+        PAYMENT_REQUESTED,          // Staff yêu cầu thanh toán
+        PAID,                       // Patient đã thanh toán
+        COMPLETED,                  // Đã hoàn thành khám
+        CANCELLED,                  // Đã hủy
+        NO_SHOW                     // Không đến
     }
     
     // Department enum synchronized with User.MedicalSpecialty

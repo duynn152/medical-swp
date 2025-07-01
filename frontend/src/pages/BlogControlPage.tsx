@@ -382,16 +382,8 @@ const BlogControlPage = () => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Quản lý Blog</h1>
-          <p className="text-gray-600">Quản lý tất cả bài viết blog y khoa (Dữ liệu từ Database)</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => runDebug()}
-            className="bg-yellow-500 text-white px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-yellow-600 transition-colors text-sm"
-            title="Debug authentication - Mở Console (F12) để xem kết quả"
-          >
-            🔍 Debug Auth
-          </button>
           <button
             onClick={handleAddBlog}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors"

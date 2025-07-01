@@ -5,6 +5,8 @@ import com.medicalswp.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.apache.poi.ss.usermodel.*;
@@ -342,5 +344,73 @@ public class UserController {
         
         public List<User> getUsers() { return users; }
         public void setUsers(List<User> users) { this.users = users; }
+    }
+
+    @PutMapping("/profile")
+    @PreAuthorize("hasRole('PATIENT')")
+    public ResponseEntity<?> updateMyProfile(@RequestBody User profileData, Authentication authentication) {
+        try {
+            String username = authentication.getName();
+            
+            // Find current user by username
+            Optional<User> userOptional = userRepository.findByUsername(username);
+            if (!userOptional.isPresent()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            User currentUser = userOptional.get();
+            
+            // Only allow patients to update their own profile
+            if (currentUser.getRole() != User.Role.PATIENT) {
+                return ResponseEntity.badRequest().body("Only patients can update profile via this endpoint");
+            }
+            
+            // Update allowed fields
+            if (profileData.getFullName() != null && !profileData.getFullName().trim().isEmpty()) {
+                currentUser.setFullName(profileData.getFullName());
+            }
+            if (profileData.getBirth() != null) {
+                currentUser.setBirth(profileData.getBirth());
+            }
+            if (profileData.getGender() != null) {
+                currentUser.setGender(profileData.getGender());
+            }
+            if (profileData.getPhone() != null) {
+                currentUser.setPhone(profileData.getPhone());
+            }
+            
+            // Save updated user
+            User updatedUser = userRepository.save(currentUser);
+            
+            // Remove sensitive information from response
+            updatedUser.setPassword(null);
+            
+            return ResponseEntity.ok(updatedUser);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error updating profile: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/profile")
+    @PreAuthorize("hasRole('PATIENT')")
+    public ResponseEntity<?> getMyProfile(Authentication authentication) {
+        try {
+            String username = authentication.getName();
+            
+            // Find current user by username
+            Optional<User> userOptional = userRepository.findByUsername(username);
+            if (!userOptional.isPresent()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            User currentUser = userOptional.get();
+            
+            // Remove sensitive information from response
+            currentUser.setPassword(null);
+            
+            return ResponseEntity.ok(currentUser);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error fetching profile: " + e.getMessage());
+        }
     }
 } 

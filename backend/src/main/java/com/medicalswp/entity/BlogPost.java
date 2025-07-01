@@ -6,8 +6,11 @@ import jakarta.validation.constraints.Size;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.ArrayList;
 
 @Entity
 @Table(name = "blog_posts")
@@ -54,6 +57,10 @@ public class BlogPost {
     
     @Size(max = 500)
     private String imageUrl;
+    
+    @OneToMany(mappedBy = "blogPost", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnoreProperties({"blogPost"})
+    private List<Comment> comments = new ArrayList<>();
     
     @CreatedDate
     @Column(updatable = false)
@@ -152,6 +159,14 @@ public class BlogPost {
     
     public void setImageUrl(String imageUrl) {
         this.imageUrl = imageUrl;
+    }
+    
+    public List<Comment> getComments() {
+        return comments;
+    }
+    
+    public void setComments(List<Comment> comments) {
+        this.comments = comments;
     }
     
     public LocalDateTime getCreatedAt() {

@@ -29,6 +29,7 @@ export interface User {
   gender?: 'MALE' | 'FEMALE' | 'OTHER'
   role: 'ADMIN' | 'DOCTOR' | 'STAFF' | 'PATIENT'
   specialty?: string
+  phone?: string
   active: boolean
   createdAt: string
   updatedAt: string
@@ -73,7 +74,7 @@ export interface Appointment {
   appointmentTime: string
   department: string
   reason?: string
-  status: 'PENDING' | 'CONFIRMED' | 'PAYMENT_REQUESTED' | 'PAID' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
+  status: 'PENDING' | 'AWAITING_DOCTOR_APPROVAL' | 'CONFIRMED' | 'PAYMENT_REQUESTED' | 'PAID' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
   emailSent: boolean
   reminderSent: boolean
   paymentRequested: boolean
@@ -109,6 +110,46 @@ export interface AppointmentStats {
   pendingAppointments: number
   confirmedAppointments: number
   todaysAppointments: number
+}
+
+export interface Comment {
+  id: number
+  authorName: string
+  authorEmail?: string
+  content: string
+  blogPost?: any
+  approved: boolean
+  likeCount?: number
+  dislikeCount?: number
+  replies?: Comment[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateCommentRequest {
+  authorName: string
+  authorEmail?: string
+  content: string
+}
+
+export interface CommentReaction {
+  id: number
+  reactionType: 'LIKE' | 'DISLIKE'
+  createdAt: string
+}
+
+export interface ReactionResponse {
+  success: boolean
+  message: string
+  reaction?: CommentReaction | null
+}
+
+export interface CommentResponse {
+  success: boolean
+  message: string
+  comment?: Comment
+  comments?: Comment[]
+  count?: number
 }
 
 class ApiService {
@@ -546,7 +587,243 @@ class ApiService {
     })
 
     if (!response.ok) {
-      throw new Error('Failed to fetch doctor\'s patient appointments')
+      throw new Error('Failed to fetch my patients appointments')
+    }
+
+    return response.json()
+  }
+
+  // Patient-specific endpoints
+  async getMyAppointments(): Promise<Appointment[]> {
+    const response = await fetch(`${API_BASE_URL}/appointments/my-appointments`, {
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch my appointments')
+    }
+
+    return response.json()
+  }
+
+  async updateMyProfile(profileData: Partial<User>): Promise<User> {
+    const response = await fetch(`${API_BASE_URL}/users/profile`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(profileData)
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || 'Failed to update profile')
+    }
+
+    return response.json()
+  }
+
+  async getMyProfile(): Promise<User> {
+    const response = await fetch(`${API_BASE_URL}/users/profile`, {
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch profile')
+    }
+
+    return response.json()
+  }
+
+  async getMyMedicalHistory(): Promise<Appointment[]> {
+    const response = await fetch(`${API_BASE_URL}/appointments/my-medical-history`, {
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch medical history')
+    }
+
+    return response.json()
+  }
+
+  // Comment endpoints
+  async getCommentsByBlogPost(blogPostId: number): Promise<CommentResponse> {
+    const response = await fetch(`${API_BASE_URL}/comments/blog/${blogPostId}`, {
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch comments')
+    }
+
+    return response.json()
+  }
+
+  async createComment(blogPostId: number, commentData: CreateCommentRequest): Promise<CommentResponse> {
+    const response = await fetch(`${API_BASE_URL}/comments/blog/${blogPostId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(commentData)
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to create comment')
+    }
+
+    return response.json()
+  }
+
+  async deleteComment(commentId: number): Promise<CommentResponse> {
+    const response = await fetch(`${API_BASE_URL}/comments/admin/${commentId}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to delete comment')
+    }
+
+    return response.json()
+  }
+
+  async approveComment(commentId: number): Promise<CommentResponse> {
+    const response = await fetch(`${API_BASE_URL}/comments/admin/${commentId}/approve`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to approve comment')
+    }
+
+    return response.json()
+  }
+
+  async rejectComment(commentId: number): Promise<CommentResponse> {
+    const response = await fetch(`${API_BASE_URL}/comments/admin/${commentId}/reject`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to reject comment')
+    }
+
+    return response.json()
+  }
+
+  // Reaction endpoints
+  async addReaction(commentId: number, reactionType: 'LIKE' | 'DISLIKE'): Promise<ReactionResponse> {
+    const response = await fetch(`${API_BASE_URL}/comments/${commentId}/react`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reactionType })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to add reaction')
+    }
+
+    return response.json()
+  }
+
+  async getMyReaction(commentId: number): Promise<ReactionResponse> {
+    const response = await fetch(`${API_BASE_URL}/comments/${commentId}/my-reaction`, {
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to get reaction')
+    }
+
+    return response.json()
+  }
+
+  async createReply(commentId: number, replyData: CreateCommentRequest): Promise<CommentResponse> {
+    const response = await fetch(`${API_BASE_URL}/comments/${commentId}/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(replyData)
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.message || 'Failed to create reply')
+    }
+
+    return response.json()
+  }
+
+  async getReplies(commentId: number): Promise<CommentResponse> {
+    const response = await fetch(`${API_BASE_URL}/comments/${commentId}/replies`, {
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch replies')
+    }
+
+    return response.json()
+  }
+
+  // New workflow methods
+  async assignDoctorToAppointment(id: number, doctorId: number): Promise<AppointmentResponse> {
+    const response = await fetch(`${API_BASE_URL}/appointments/${id}/assign-doctor`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ doctorId })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to assign doctor to appointment')
+    }
+
+    return response.json()
+  }
+
+  async doctorAcceptAppointment(id: number, response?: string): Promise<AppointmentResponse> {
+    const apiResponse = await fetch(`${API_BASE_URL}/appointments/${id}/doctor-accept`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ response: response || 'Accepted by doctor' })
+    })
+
+    if (!apiResponse.ok) {
+      const error = await apiResponse.json()
+      throw new Error(error.error || 'Failed to accept appointment')
+    }
+
+    return apiResponse.json()
+  }
+
+  async doctorDeclineAppointment(id: number, reason?: string): Promise<AppointmentResponse> {
+    const response = await fetch(`${API_BASE_URL}/appointments/${id}/doctor-decline`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ reason: reason || 'Declined by doctor' })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to decline appointment')
+    }
+
+    return response.json()
+  }
+
+  async getAppointmentsPendingMyApproval(): Promise<Appointment[]> {
+    const response = await fetch(`${API_BASE_URL}/appointments/pending-my-approval`, {
+      headers: this.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch appointments pending approval')
     }
 
     return response.json()

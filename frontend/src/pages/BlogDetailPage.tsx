@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Calendar, User, Clock, Tag, ArrowLeft, Loader, AlertCircle } from 'lucide-react'
+import CommentList from '../components/CommentList'
 
 interface BlogPost {
   id: number
@@ -206,6 +207,11 @@ const BlogDetailPage = () => {
             />
           </div>
         </article>
+        
+        {/* Comments Section */}
+        <div className="mt-8">
+          <CommentList blogPostId={Number(id)} />
+        </div>
         
         {/* Related Actions */}
         <div className="mt-8 text-center">

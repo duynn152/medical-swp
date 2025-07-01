@@ -1,1 +1,1 @@
-ALTER TABLE appointments DROP CONSTRAINT IF EXISTS appointments_status_check; ALTER TABLE appointments ADD CONSTRAINT appointments_status_check CHECK (status IN ('PENDING', 'CONFIRMED', 'PAYMENT_REQUESTED', 'PAID', 'CANCELLED', 'COMPLETED', 'NO_SHOW'));
+ALTER TABLE appointments DROP CONSTRAINT IF EXISTS appointments_status_check; ALTER TABLE appointments ADD CONSTRAINT appointments_status_check CHECK (status IN ('PENDING', 'AWAITING_DOCTOR_APPROVAL', 'CONFIRMED', 'PAYMENT_REQUESTED', 'PAID', 'CANCELLED', 'COMPLETED', 'NO_SHOW'));
