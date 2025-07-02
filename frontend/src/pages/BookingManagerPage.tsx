@@ -118,6 +118,11 @@ const BookingManagerPage = () => {
   // Create account states
   const [creatingAccount, setCreatingAccount] = useState(false)
 
+  // Bulk request payment states
+  const [showBulkRequestPaymentConfirm, setShowBulkRequestPaymentConfirm] = useState(false)
+  const [bulkRequestingPayment, setBulkRequestingPayment] = useState(false)
+  const [bulkPaymentAmount, setBulkPaymentAmount] = useState<string>('')
+
   // Helper functions for date/time validation
   const getMinValidDate = () => {
     const now = new Date()
@@ -885,24 +890,92 @@ const BookingManagerPage = () => {
   }
 
   const confirmBulkPaid = async () => {
+    console.log('🔍 DEBUG: confirmBulkPaid started')
+    console.log('🔍 DEBUG: selectedAppointments:', Array.from(selectedAppointments))
+    
     setBulkMarking(true)
     let successCount = 0
     let errorCount = 0
+    let emailSuccessCount = 0
+    let emailErrorCount = 0
 
     try {
-      const paidPromises = Array.from(selectedAppointments).map(async (id) => {
+      const selectedIds = Array.from(selectedAppointments)
+      console.log('🔍 DEBUG: selectedIds:', selectedIds)
+      
+      // First, mark appointments as paid
+      const paidPromises = selectedIds.map(async (id) => {
+        console.log('🔍 DEBUG: Processing appointment ID:', id)
         try {
           await apiService.updateAppointment(id, { status: 'PAID' })
           successCount++
+          console.log('✅ Successfully updated appointment', id, 'to PAID')
           return id
         } catch (error) {
-          console.error(`Failed to mark appointment ${id} as paid:`, error)
+          console.error(`❌ Failed to mark appointment ${id} as paid:`, error)
           errorCount++
           throw error
         }
       })
       
-      await Promise.allSettled(paidPromises)
+      console.log('🔍 DEBUG: Waiting for appointment updates...')
+      const results = await Promise.allSettled(paidPromises)
+      console.log('🔍 DEBUG: Update results:', results)
+      
+      // Then, send email notifications for successfully updated appointments
+      const successfulIds = selectedIds.filter((id, index) => {
+        const result = results[index]
+        const isSuccess = result.status === 'fulfilled'
+        console.log('🔍 DEBUG: Appointment', id, 'update success:', isSuccess)
+        return isSuccess
+      })
+
+      console.log('🔍 DEBUG: successfulIds after filtering:', successfulIds)
+      console.log('🔍 DEBUG: successCount:', successCount, 'errorCount:', errorCount)
+
+      if (successfulIds.length > 0) {
+        // Send email notifications
+        console.log('🔍 DEBUG: Starting email notifications for', successfulIds.length, 'appointments')
+        
+        const emailPromises = successfulIds.map(async (appointmentId) => {
+          try {
+            const appointment = appointments.find(apt => apt.id === appointmentId)
+            console.log('🔍 DEBUG: Processing appointment', appointmentId, 'email:', appointment?.email)
+            
+            if (appointment && appointment.email) {
+              console.log('🔍 DEBUG: Sending payment confirmation email to', appointment.email)
+              
+              // Send payment confirmation email
+              const emailResult = await apiService.sendPaymentConfirmationEmail(appointmentId, {
+                patientEmail: appointment.email,
+                patientName: appointment.fullName,
+                appointmentDate: appointment.appointmentDate,
+                appointmentTime: appointment.appointmentTime,
+                department: getDepartmentDisplayName(appointment.department)
+              })
+              
+              console.log('🔍 DEBUG: Email result for appointment', appointmentId, ':', emailResult)
+              
+              if (emailResult.success) {
+                emailSuccessCount++
+                console.log('✅ Email sent successfully for appointment', appointmentId)
+              } else {
+                emailErrorCount++
+                console.log('❌ Email failed for appointment', appointmentId, ':', emailResult.message)
+              }
+            } else {
+              console.log('⚠️ DEBUG: Skipping appointment', appointmentId, '- no email or appointment not found')
+            }
+          } catch (emailError) {
+            console.error(`❌ Failed to send payment confirmation email for appointment ${appointmentId}:`, emailError)
+            emailErrorCount++
+          }
+        })
+
+        console.log('🔍 DEBUG: Waiting for all email promises to complete...')
+        await Promise.allSettled(emailPromises)
+        console.log('🔍 DEBUG: Email notifications completed. Success:', emailSuccessCount, 'Errors:', emailErrorCount)
+      }
       
       await fetchAppointments()
       await fetchStats()
@@ -911,9 +984,19 @@ const BookingManagerPage = () => {
       setSelectAll(false)
       setShowBulkPaidConfirm(false)
       
+      // Show comprehensive success/error messages
       if (successCount > 0) {
-        toast.success(`Đã đánh dấu ${successCount} lịch hẹn là đã thanh toán`)
+        if (emailSuccessCount > 0) {
+          toast.success(`Đã đánh dấu ${successCount} lịch hẹn là đã thanh toán và gửi email thông báo đến ${emailSuccessCount} bệnh nhân`)
+        } else {
+          toast.success(`Đã đánh dấu ${successCount} lịch hẹn là đã thanh toán`)
+        }
       }
+      
+      if (emailErrorCount > 0) {
+        toast.success(`Lưu ý: ${emailErrorCount} email thông báo không thể gửi, nhưng trạng thái đã được cập nhật`)
+      }
+      
       if (errorCount > 0) {
         toast.error(`Có ${errorCount} lịch hẹn không thể đánh dấu`)
       }
@@ -1027,6 +1110,89 @@ const BookingManagerPage = () => {
     setSelectedAppointments(new Set())
     setSelectAll(false)
   }, [filteredAppointments])
+
+  // Helper function to handle status changes with confirmation
+  const handleStatusChangeWithConfirmation = async (
+    appointmentId: number, 
+    newStatus: string, 
+    reason?: string,
+    confirmMessage?: string
+  ) => {
+    if (confirmMessage && !window.confirm(confirmMessage)) {
+      return
+    }
+    
+    try {
+      await updateAppointmentStatus(appointmentId, newStatus, reason)
+    } catch (error) {
+      console.error('Error updating status:', error)
+    }
+  }
+
+  // Bulk request payment functions
+  const handleBulkRequestPayment = async () => {
+    setShowBulkRequestPaymentConfirm(true)
+  }
+
+  const confirmBulkRequestPayment = async () => {
+    if (!bulkPaymentAmount.trim() || isNaN(Number(bulkPaymentAmount))) {
+      toast.error('Vui lòng nhập số tiền hợp lệ')
+      return
+    }
+
+    setBulkRequestingPayment(true)
+    let successCount = 0
+    let failedCount = 0
+    const errors: string[] = []
+
+    try {
+      const selectedIds = Array.from(selectedAppointments)
+      
+      for (const appointmentId of selectedIds) {
+        try {
+          const appointment = appointments.find(apt => apt.id === appointmentId)
+          if (!appointment) {
+            failedCount++
+            errors.push(`Lịch hẹn #${appointmentId}: Không tìm thấy`)
+            continue
+          }
+
+          // Check if appointment is in CONFIRMED status
+          if (appointment.status !== 'CONFIRMED') {
+            failedCount++
+            errors.push(`Lịch hẹn #${appointmentId}: Trạng thái không hợp lệ (${statusLabels[appointment.status]})`)
+            continue
+          }
+
+          await apiService.requestPayment(appointmentId, Number(bulkPaymentAmount))
+          successCount++
+        } catch (error: any) {
+          failedCount++
+          errors.push(`Lịch hẹn #${appointmentId}: ${error.message}`)
+        }
+      }
+
+      if (successCount > 0) {
+        await fetchAppointments()
+        await fetchStats()
+        setSelectedAppointments(new Set())
+        setSelectAll(false)
+      }
+
+      if (failedCount === 0) {
+        toast.success(`Đã yêu cầu thanh toán thành công cho ${successCount} lịch hẹn`)
+      } else {
+        toast.error(`Thành công: ${successCount}, Thất bại: ${failedCount}. Chi tiết lỗi: ${errors.join(', ')}`)
+      }
+    } catch (error) {
+      console.error('Error bulk requesting payment:', error)
+      toast.error('Có lỗi xảy ra khi yêu cầu thanh toán')
+    } finally {
+      setBulkRequestingPayment(false)
+      setShowBulkRequestPaymentConfirm(false)
+      setBulkPaymentAmount('')
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -1168,26 +1334,34 @@ const BookingManagerPage = () => {
               </div>
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={handleBulkCreateAccounts}
-                  disabled={creatingAccount}
-                  className="flex items-center px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleBulkRequestPayment}
+                  className="flex items-center px-3 py-1 bg-teal-600 text-white rounded-md hover:bg-teal-700 text-sm"
                 >
-                  <UserPlus className="w-4 h-4 mr-1" />
-                  {creatingAccount ? 'Đang tạo...' : 'Tạo tài khoản'}
-                </button>
-                <button
-                  onClick={handleBulkCancel}
-                  className="flex items-center px-3 py-1 bg-orange-600 text-white rounded-md hover:bg-orange-700 text-sm"
-                >
-                  <X className="w-4 h-4 mr-1" />
-                  Hủy lịch hẹn
+                  <TrendingUp className="w-4 h-4 mr-1" />
+                  Request Payment
                 </button>
                 <button
                   onClick={handleBulkPaid}
                   className="flex items-center px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm"
                 >
                   <Check className="w-4 h-4 mr-1" />
-                  Paid
+                  Mark Paid
+                </button>
+                <button
+                  onClick={handleBulkCancel}
+                  className="flex items-center px-3 py-1 bg-orange-600 text-white rounded-md hover:bg-orange-700 text-sm"
+                >
+                  <X className="w-4 h-4 mr-1" />
+                  Cancel
+                </button>
+                <span className="text-gray-300">|</span>
+                <button
+                  onClick={handleBulkCreateAccounts}
+                  disabled={creatingAccount}
+                  className="flex items-center px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <UserPlus className="w-4 h-4 mr-1" />
+                  {creatingAccount ? 'Creating...' : 'Create Accounts'}
                 </button>
                 <button
                   onClick={handleBulkPermanentDelete}
@@ -1325,60 +1499,11 @@ const BookingManagerPage = () => {
                     </td>
                     
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <select
-                        value={appointment.status}
-                        onChange={(e) => updateAppointmentStatus(appointment.id, e.target.value)}
-                        className={`text-xs font-medium rounded-full px-3 py-1 border-0 focus:ring-2 focus:ring-blue-500 ${statusColors[appointment.status as keyof typeof statusColors]}`}
-                      >
-                        {/* Always show current status */}
-                        <option value={appointment.status}>
-                          {statusLabels[appointment.status]}
-                        </option>
-                        
-                        {/* Show valid transitions based on current status */}
-                        {appointment.status === 'PENDING' && (
-                          <>
-                            <option value="AWAITING_DOCTOR_APPROVAL">Chờ bác sĩ phản hồi</option>
-                            <option value="CANCELLED">Đã hủy</option>
-                          </>
-                        )}
-                        
-                        {appointment.status === 'AWAITING_DOCTOR_APPROVAL' && (
-                          <>
-                            <option value="CONFIRMED">Đã xác nhận</option>
-                            <option value="CANCELLED">Đã hủy</option>
-                          </>
-                        )}
-                        
-                        {appointment.status === 'CONFIRMED' && (
-                          <>
-                            <option value="PAYMENT_REQUESTED">Yêu cầu thanh toán</option>
-                            <option value="CANCELLED">Đã hủy</option>
-                            <option value="NO_SHOW">Không đến</option>
-                          </>
-                        )}
-                        
-                        {appointment.status === 'PAYMENT_REQUESTED' && (
-                          <>
-                            <option value="PAID">Đã thanh toán</option>
-                            <option value="CANCELLED">Đã hủy</option>
-                            <option value="NO_SHOW">Không đến</option>
-                          </>
-                        )}
-                        
-                        {appointment.status === 'PAID' && (
-                          <>
-                            <option value="COMPLETED">Hoàn thành</option>
-                            <option value="CANCELLED">Đã hủy</option>
-                            <option value="NO_SHOW">Không đến</option>
-                          </>
-                        )}
-                        
-                        {/* Final states - no transitions */}
-                        {(appointment.status === 'COMPLETED' || appointment.status === 'CANCELLED' || appointment.status === 'NO_SHOW') && (
-                          <option disabled>-- Trạng thái cuối --</option>
-                        )}
-                      </select>
+                      {/* Readonly status badge instead of select dropdown */}
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[appointment.status as keyof typeof statusColors]}`}>
+                        <StatusIcon status={appointment.status} />
+                        <span className="ml-1">{statusLabels[appointment.status]}</span>
+                      </span>
                     </td>
                     
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -1395,6 +1520,7 @@ const BookingManagerPage = () => {
                           View
                         </button>
 
+                        {/* Only keep Assign button for PENDING status - requires specific doctor selection */}
                         {appointment.status === 'PENDING' && (
                           <button
                             onClick={() => {
@@ -1404,18 +1530,21 @@ const BookingManagerPage = () => {
                             }}
                             className="px-3 py-1 border border-green-300 rounded-md text-sm font-medium text-green-600 bg-white hover:bg-green-50 hover:border-green-400"
                           >
-                            Assign
+                            Assign Doctor
                           </button>
                         )}
                         
-                        {appointment.status === 'CONFIRMED' && !appointment.paymentRequested && (
+                        {/* Show Confirm button for AWAITING_DOCTOR_APPROVAL - specific workflow step */}
+                        {appointment.status === 'AWAITING_DOCTOR_APPROVAL' && (
                           <button
-                            onClick={() => handleRequestPayment(appointment)}
-                            className="px-3 py-1 border border-orange-300 rounded-md text-sm font-medium text-orange-600 bg-white hover:bg-orange-50 hover:border-orange-400"
+                            onClick={() => handleStatusChangeWithConfirmation(appointment.id, 'CONFIRMED')}
+                            className="px-3 py-1 border border-green-300 rounded-md text-sm font-medium text-green-600 bg-white hover:bg-green-50 hover:border-green-400"
                           >
-                            Pay
+                            Confirm
                           </button>
                         )}
+
+
                       </div>
                     </td>
                   </tr>
@@ -2174,6 +2303,73 @@ const BookingManagerPage = () => {
                     <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                   )}
                   {bulkMarking ? 'Đang xử lý...' : 'Xác nhận đã thanh toán'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Request Payment Confirm Modal */}
+      {showBulkRequestPaymentConfirm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Xác nhận yêu cầu thanh toán
+                </h3>
+                <button
+                  onClick={() => setShowBulkRequestPaymentConfirm(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="flex items-center text-teal-600">
+                  <UserPlus className="w-6 h-6 mr-2" />
+                  <span className="font-medium">Yêu cầu thanh toán</span>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Bạn có chắc chắn muốn yêu cầu thanh toán cho <strong>{selectedAppointments.size}</strong> lịch hẹn đã chọn?
+                </p>
+                <p className="text-xs text-gray-500">
+                  Nhập số tiền thanh toán và gửi yêu cầu thanh toán cho tất cả các lịch hẹn đã chọn.
+                </p>
+                
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Số tiền thanh toán (VNĐ) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Nhập số tiền thanh toán"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    value={bulkPaymentAmount}
+                    onChange={(e) => setBulkPaymentAmount(e.target.value)}
+                  />
+                </div>
+              </div>
+              
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowBulkRequestPaymentConfirm(false)}
+                  disabled={bulkRequestingPayment}
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={confirmBulkRequestPayment}
+                  disabled={bulkRequestingPayment}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {bulkRequestingPayment && (
+                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  )}
+                  {bulkRequestingPayment ? 'Đang xử lý...' : 'Xác nhận yêu cầu thanh toán'}
                 </button>
               </div>
             </div>

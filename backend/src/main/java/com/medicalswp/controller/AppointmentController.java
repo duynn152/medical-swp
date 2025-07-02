@@ -1232,6 +1232,78 @@ public class AppointmentController {
     }
 
     /**
+     * ADMIN/STAFF: Send payment confirmation email
+     */
+    @PostMapping("/{id}/send-payment-confirmation")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('STAFF')")
+    public ResponseEntity<?> sendPaymentConfirmationEmail(@PathVariable Long id, @RequestBody Map<String, Object> request) {
+        try {
+            logger.info("=== Sending payment confirmation email for appointment: {} ===", id);
+            
+            // Get appointment
+            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
+            if (!appointmentOpt.isPresent()) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("message", "Appointment not found");
+                return ResponseEntity.notFound().build();
+            }
+            
+            Appointment appointment = appointmentOpt.get();
+            
+            // Validate that appointment is in PAID status
+            if (appointment.getStatus() != Appointment.AppointmentStatus.PAID) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("message", "Can only send payment confirmation for PAID appointments");
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            // Get email from request or use appointment email
+            String patientEmail = (String) request.get("patientEmail");
+            if (patientEmail == null || patientEmail.trim().isEmpty()) {
+                patientEmail = appointment.getEmail();
+            }
+            
+            if (patientEmail == null || patientEmail.trim().isEmpty()) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("message", "No email address available for this appointment");
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            // Build payment confirmation email content
+            String emailContent = buildPaymentConfirmationEmailContent(appointment);
+            
+            // Send email
+            boolean emailSent = emailService.sendSimpleEmail(
+                patientEmail,
+                "✅ Xác nhận thanh toán thành công - Lịch hẹn khám bệnh",
+                emailContent
+            );
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", emailSent);
+            response.put("message", emailSent ? "Payment confirmation email sent successfully" : "Failed to send payment confirmation email");
+            
+            if (emailSent) {
+                logger.info("=== Payment confirmation email sent successfully to: {} for appointment: {} ===", patientEmail, id);
+            } else {
+                logger.error("=== Failed to send payment confirmation email to: {} for appointment: {} ===", patientEmail, id);
+            }
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            logger.error("=== Error sending payment confirmation email for appointment: {} ===", id, e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", "Failed to send payment confirmation email: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
      * ADMIN/STAFF: Send update notification email
      */
     @PostMapping("/{id}/send-update-notification")
@@ -1311,6 +1383,42 @@ public class AppointmentController {
         content.append("Trân trọng,\n");
         content.append("Phòng khám Florism Care\n");
         content.append("Email: info@florism.site");
+        
+        return content.toString();
+    }
+
+    private String buildPaymentConfirmationEmailContent(Appointment appointment) {
+        StringBuilder content = new StringBuilder();
+        content.append("Kính chào ").append(appointment.getFullName()).append(",\n\n");
+        content.append("Chúng tôi xác nhận đã nhận được thanh toán cho lịch hẹn khám bệnh của bạn.\n\n");
+        
+        content.append("THÔNG TIN LỊCH HẸN:\n");
+        content.append("===================\n");
+        content.append("Mã lịch hẹn: #").append(appointment.getId()).append("\n");
+        content.append("Ngày khám: ").append(appointment.getAppointmentDate()).append("\n");
+        content.append("Giờ khám: ").append(appointment.getAppointmentTime()).append("\n");
+        content.append("Khoa khám: ").append(appointment.getDepartment().getDepartmentName()).append("\n");
+        
+        if (appointment.getDoctor() != null) {
+            content.append("Bác sĩ phụ trách: ").append(appointment.getDoctor().getFullName()).append("\n");
+        }
+        
+        if (appointment.getPaymentAmount() != null) {
+            content.append("Số tiền đã thanh toán: ").append(String.format("%,.0f VNĐ", appointment.getPaymentAmount())).append("\n");
+        }
+        
+        content.append("\nLưu ý quan trọng:\n");
+        content.append("- Vui lòng đến trước giờ hẹn 15 phút\n");
+        content.append("- Mang theo CMND/CCCD và thẻ BHYT (nếu có)\n");
+        content.append("- Nếu cần hủy hoặc thay đổi lịch hẹn, vui lòng liên hệ trước 24 giờ\n\n");
+        
+        content.append("Địa chỉ: 123 Đường ABC, Quận 1, TP.HCM\n");
+        content.append("Điện thoại: 1900 1234\n");
+        content.append("Email: info@florism.site\n\n");
+        
+        content.append("Cảm ơn bạn đã tin tưởng dịch vụ của chúng tôi.\n\n");
+        content.append("Trân trọng,\n");
+        content.append("Đội ngũ Florism Care");
         
         return content.toString();
     }
