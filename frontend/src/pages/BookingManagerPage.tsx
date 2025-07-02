@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Calendar, Clock, User, Phone, Mail, Building2, Check, X, Eye, Search, AlertCircle, CheckCircle, XCircle, Calendar as CalendarIcon, TrendingUp, UserCheck, Trash2, Edit } from 'lucide-react'
+import { Calendar, Clock, User, Phone, Mail, Building2, Check, X, Eye, Search, AlertCircle, CheckCircle, XCircle, Calendar as CalendarIcon, TrendingUp, UserCheck, Trash2, Edit, UserPlus } from 'lucide-react'
 import { apiService, DepartmentInfo } from '../utils/api'
 import { formatDate, formatDateWithTime } from '../utils/dateFormat'
 import toast from 'react-hot-toast'
@@ -61,12 +61,19 @@ const BookingManagerPage = () => {
   // Bulk selection states
   const [selectedAppointments, setSelectedAppointments] = useState<Set<number>>(new Set())
   const [selectAll, setSelectAll] = useState(false)
-  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
-  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   // Bulk permanent delete states
   const [showBulkPermanentDeleteConfirm, setShowBulkPermanentDeleteConfirm] = useState(false)
   const [bulkPermanentDeleting, setBulkPermanentDeleting] = useState(false)
+
+  // Bulk cancel states
+  const [showBulkCancelConfirm, setShowBulkCancelConfirm] = useState(false)
+  const [bulkCancelling, setBulkCancelling] = useState(false)
+  const [cancellationReason, setCancellationReason] = useState('')
+
+  // Bulk paid states
+  const [showBulkPaidConfirm, setShowBulkPaidConfirm] = useState(false)
+  const [bulkMarking, setBulkMarking] = useState(false)
 
   // Doctor selection modal states
   const [showDoctorModal, setShowDoctorModal] = useState(false)
@@ -96,6 +103,202 @@ const BookingManagerPage = () => {
     reason: ''
   })
   const [updatingAppointment, setUpdatingAppointment] = useState(false)
+
+  // View modal edit states
+  const [isEditingInView, setIsEditingInView] = useState(false)
+  const [viewEditData, setViewEditData] = useState({
+    fullName: '',
+    phone: '',
+    email: '',
+    appointmentDate: '',
+    appointmentTime: '',
+    department: ''
+  })
+
+  // Create account states
+  const [creatingAccount, setCreatingAccount] = useState(false)
+
+  // Helper functions for date/time validation
+  const getMinValidDate = () => {
+    const now = new Date()
+    const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000)
+    
+    // If it's late in the day (after 22:00), set min date to tomorrow
+    if (now.getHours() >= 22) {
+      const tomorrow = new Date(now)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      return tomorrow.toISOString().split('T')[0]
+    }
+    
+    return now.toISOString().split('T')[0]
+  }
+
+  const getValidTimeSlots = (selectedDate: string) => {
+    const allTimeSlots = [
+      '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
+      '11:00', '11:30', '13:30', '14:00', '14:30', '15:00',
+      '15:30', '16:00', '16:30', '17:00'
+    ]
+
+    if (!selectedDate) return allTimeSlots
+
+    const now = new Date()
+    const selectedDateObj = new Date(selectedDate)
+    const isToday = selectedDateObj.toDateString() === now.toDateString()
+
+    if (!isToday) {
+      return allTimeSlots // All times valid for future dates
+    }
+
+    // For today, only show times that are at least 2 hours from now
+    const minValidTime = new Date(now.getTime() + 2 * 60 * 60 * 1000)
+    const minHour = minValidTime.getHours()
+    const minMinute = minValidTime.getMinutes()
+
+    return allTimeSlots.filter(timeSlot => {
+      const [hour, minute] = timeSlot.split(':').map(Number)
+      return hour > minHour || (hour === minHour && minute >= minMinute)
+    })
+  }
+
+  // Handle editing in view modal
+  const handleEditInView = (appointment: Appointment) => {
+    setViewEditData({
+      fullName: appointment.fullName,
+      phone: appointment.phone,
+      email: appointment.email,
+      appointmentDate: appointment.appointmentDate,
+      appointmentTime: appointment.appointmentTime,
+      department: appointment.department
+    })
+    setIsEditingInView(true)
+  }
+
+  const handleSaveInView = async () => {
+    if (!selectedAppointment) return
+
+    // Validate required fields
+    if (!viewEditData.fullName.trim() || !viewEditData.phone.trim() || !viewEditData.appointmentDate || !viewEditData.appointmentTime || !viewEditData.department) {
+      toast.error('Vui lòng điền đầy đủ thông tin bắt buộc')
+      return
+    }
+
+    // Basic validation - the date/time options are already filtered to be valid
+
+    setUpdatingAppointment(true)
+    try {
+      // Check time slot availability if date/time/department changed
+      const hasDateTimeChange = 
+        viewEditData.appointmentDate !== selectedAppointment.appointmentDate ||
+        viewEditData.appointmentTime !== selectedAppointment.appointmentTime ||
+        viewEditData.department !== selectedAppointment.department
+
+      if (hasDateTimeChange) {
+        const availability = await apiService.checkTimeSlotAvailability(
+          viewEditData.appointmentDate,
+          viewEditData.appointmentTime,
+          viewEditData.department
+        )
+        
+        if (!availability.available) {
+          toast.error(availability.message)
+          return
+        }
+      }
+
+      // Update appointment
+      await apiService.updateAppointment(selectedAppointment.id, {
+        fullName: viewEditData.fullName.trim(),
+        phone: viewEditData.phone.trim(),
+        email: viewEditData.email.trim(),
+        appointmentDate: viewEditData.appointmentDate,
+        appointmentTime: viewEditData.appointmentTime,
+        department: viewEditData.department
+      })
+
+      // Update the local state
+      const updatedAppointment = {
+        ...selectedAppointment,
+        fullName: viewEditData.fullName.trim(),
+        phone: viewEditData.phone.trim(),
+        email: viewEditData.email.trim(),
+        appointmentDate: viewEditData.appointmentDate,
+        appointmentTime: viewEditData.appointmentTime,
+        department: viewEditData.department
+      }
+      setSelectedAppointment(updatedAppointment)
+
+      // Refresh appointments list
+      await fetchAppointments()
+      
+      setIsEditingInView(false)
+      
+      // Send notification email about appointment changes
+      try {
+        if (selectedAppointment.email) {
+          // Determine what changed to customize email content
+          const changes = []
+          if (viewEditData.fullName !== selectedAppointment.fullName) changes.push('họ tên')
+          if (viewEditData.phone !== selectedAppointment.phone) changes.push('số điện thoại')
+          if (viewEditData.email !== selectedAppointment.email) changes.push('email')
+          if (viewEditData.appointmentDate !== selectedAppointment.appointmentDate) changes.push('ngày hẹn')
+          if (viewEditData.appointmentTime !== selectedAppointment.appointmentTime) changes.push('giờ hẹn')
+          if (viewEditData.department !== selectedAppointment.department) changes.push('khoa khám')
+
+          if (changes.length > 0) {
+            // Send email notification about changes
+            try {
+              const emailResult = await apiService.sendAppointmentUpdateNotification(selectedAppointment.id, {
+                patientEmail: selectedAppointment.email,
+                patientName: selectedAppointment.fullName,
+                changes: changes,
+                newAppointmentDate: viewEditData.appointmentDate,
+                newAppointmentTime: viewEditData.appointmentTime,
+                newDepartment: getDepartmentDisplayName(viewEditData.department)
+              })
+              
+              if (emailResult.success) {
+                if (emailResult.message.includes('simulated')) {
+                  toast.success(`Thông tin đã được cập nhật (thay đổi: ${changes.join(', ')}). Email thông báo sẽ được triển khai trong phiên bản tiếp theo.`)
+                } else {
+                  toast.success(`Thông tin đã được cập nhật và email thông báo đã được gửi đến bệnh nhân (thay đổi: ${changes.join(', ')})`)
+                }
+              } else {
+                toast.success(`Thông tin đã được cập nhật (thay đổi: ${changes.join(', ')}). Không thể gửi email thông báo: ${emailResult.message}`)
+              }
+            } catch (emailError) {
+              console.error('Error sending email notification:', emailError)
+              toast.success(`Thông tin đã được cập nhật (thay đổi: ${changes.join(', ')}). Không thể gửi email thông báo`)
+            }
+          } else {
+            toast.success('Thông tin đã được cập nhật thành công')
+          }
+        } else {
+          toast.success('Thông tin đã được cập nhật thành công (không có email để gửi thông báo)')
+        }
+      } catch (emailError) {
+        console.error('Error sending email notification:', emailError)
+        toast.success('Thông tin đã được cập nhật thành công (không thể gửi email thông báo)')
+      }
+    } catch (error: any) {
+      console.error('Error updating appointment:', error)
+      toast.error(error.message || 'Không thể cập nhật thông tin')
+    } finally {
+      setUpdatingAppointment(false)
+    }
+  }
+
+  const handleCancelEditInView = () => {
+    setIsEditingInView(false)
+    setViewEditData({
+      fullName: '',
+      phone: '',
+      email: '',
+      appointmentDate: '',
+      appointmentTime: '',
+      department: ''
+    })
+  }
 
   // Get department display name from code
   const getDepartmentDisplayName = (departmentCode: string) => {
@@ -310,6 +513,11 @@ const BookingManagerPage = () => {
         return
       }
 
+      if (status === 'COMPLETED' && currentStatus !== 'PAID') {
+        toast.error('Chỉ có thể hoàn thành lịch hẹn sau khi đã thanh toán')
+        return
+      }
+
       // Handle status updates through appropriate API calls
       if (status === 'CANCELLED') {
         await apiService.cancelAppointment(id, reason || 'Cancelled by staff')
@@ -322,6 +530,24 @@ const BookingManagerPage = () => {
       
       await fetchAppointments()
       await fetchStats()
+      
+      // Auto create patient account when appointment is completed
+      if (status === 'COMPLETED' && currentAppointment.email) {
+        try {
+          const result = await createPatientAccount(currentAppointment)
+          if (result.success) {
+            toast.success(`Lịch hẹn hoàn thành. Tài khoản bệnh nhân đã được tạo tự động. Password: 123456`)
+          } else if (result.message.includes('đã tồn tại')) {
+            toast.success(`Lịch hẹn hoàn thành. Bệnh nhân đã có tài khoản`)
+          } else {
+            toast.success(`Lịch hẹn hoàn thành. Không thể tạo tài khoản: ${result.message}`)
+          }
+        } catch (error) {
+          console.error('Error auto-creating account on completion:', error)
+          toast.success('Lịch hẹn hoàn thành. Không thể tạo tài khoản tự động')
+        }
+        return // Exit early since we already showed a message
+      }
       
       const statusLabelsMap = {
         'PENDING': 'chờ xác nhận',
@@ -375,6 +601,34 @@ const BookingManagerPage = () => {
       toast.error('Không thể gửi yêu cầu thanh toán')
     } finally {
       setRequestingPayment(false)
+    }
+  }
+
+  // Create account function (single appointment)
+  const handleCreateAccount = async (appointment: Appointment) => {
+    if (!appointment.email) {
+      toast.error('Bệnh nhân phải có email để tạo tài khoản')
+      return
+    }
+
+    setCreatingAccount(true)
+    try {
+      const result = await createPatientAccount(appointment)
+      
+      if (result.success) {
+        toast.success(`${result.message}. Password: 123456`)
+      } else {
+        if (result.message.includes('đã tồn tại')) {
+          toast.success(result.message)
+        } else {
+          toast.error(result.message)
+        }
+      }
+    } catch (error: any) {
+      console.error('Error creating account:', error)
+      toast.error(error.message || 'Không thể tạo tài khoản')
+    } finally {
+      setCreatingAccount(false)
     }
   }
 
@@ -468,8 +722,6 @@ const BookingManagerPage = () => {
     }
   }
 
-
-
   const formatTime = (timeString: string) => {
     return timeString.slice(0, 5)
   }
@@ -512,38 +764,7 @@ const BookingManagerPage = () => {
     setSelectAll(newSelected.size === filteredAppointments.length && filteredAppointments.length > 0)
   }
 
-  const handleBulkDelete = async () => {
-    if (selectedAppointments.size === 0) {
-      toast.error('Vui lòng chọn ít nhất một lịch hẹn để xóa')
-      return
-    }
-    setShowBulkDeleteConfirm(true)
-  }
 
-  const confirmBulkDelete = async () => {
-    setBulkDeleting(true)
-    try {
-      const deletePromises = Array.from(selectedAppointments).map(id => 
-        apiService.cancelAppointment(id, 'Bulk cancelled by admin')
-      )
-      
-      await Promise.all(deletePromises)
-      
-      await fetchAppointments()
-      await fetchStats()
-      
-      setSelectedAppointments(new Set())
-      setSelectAll(false)
-      setShowBulkDeleteConfirm(false)
-      
-      toast.success(`Đã hủy ${selectedAppointments.size} lịch hẹn`)
-    } catch (error) {
-      console.error('Error bulk deleting appointments:', error)
-      toast.error('Không thể xóa một số lịch hẹn')
-    } finally {
-      setBulkDeleting(false)
-    }
-  }
 
   // Bulk permanent delete functions
   const handleBulkPermanentDelete = async () => {
@@ -593,6 +814,211 @@ const BookingManagerPage = () => {
       toast.error('Không thể xóa vĩnh viễn một số lịch hẹn')
     } finally {
       setBulkPermanentDeleting(false)
+    }
+  }
+
+  // Bulk cancel functions
+  const handleBulkCancel = async () => {
+    if (selectedAppointments.size === 0) {
+      toast.error('Vui lòng chọn ít nhất một lịch hẹn để hủy')
+      return
+    }
+    setCancellationReason('')
+    setShowBulkCancelConfirm(true)
+  }
+
+  const confirmBulkCancel = async () => {
+    if (!cancellationReason.trim()) {
+      toast.error('Vui lòng nhập lý do hủy lịch hẹn')
+      return
+    }
+
+    setBulkCancelling(true)
+    let successCount = 0
+    let errorCount = 0
+
+    try {
+      const cancelPromises = Array.from(selectedAppointments).map(async (id) => {
+        try {
+          // Cancel appointment with reason via the API
+          await apiService.cancelAppointment(id, cancellationReason.trim())
+          successCount++
+          return id
+        } catch (error) {
+          console.error(`Failed to cancel appointment ${id}:`, error)
+          errorCount++
+          throw error
+        }
+      })
+      
+      await Promise.allSettled(cancelPromises)
+      
+      await fetchAppointments()
+      await fetchStats()
+      
+      setSelectedAppointments(new Set())
+      setSelectAll(false)
+      setShowBulkCancelConfirm(false)
+      setCancellationReason('')
+      
+      if (successCount > 0) {
+        toast.success(`Đã hủy thành công ${successCount} lịch hẹn và gửi email thông báo`)
+      }
+      if (errorCount > 0) {
+        toast.error(`Có ${errorCount} lịch hẹn không thể hủy`)
+      }
+    } catch (error) {
+      console.error('Error bulk cancelling appointments:', error)
+      toast.error('Không thể hủy một số lịch hẹn')
+    } finally {
+      setBulkCancelling(false)
+    }
+  }
+
+  // Bulk paid functions
+  const handleBulkPaid = async () => {
+    if (selectedAppointments.size === 0) {
+      toast.error('Vui lòng chọn ít nhất một lịch hẹn để đánh dấu đã thanh toán')
+      return
+    }
+    setShowBulkPaidConfirm(true)
+  }
+
+  const confirmBulkPaid = async () => {
+    setBulkMarking(true)
+    let successCount = 0
+    let errorCount = 0
+
+    try {
+      const paidPromises = Array.from(selectedAppointments).map(async (id) => {
+        try {
+          await apiService.updateAppointment(id, { status: 'PAID' })
+          successCount++
+          return id
+        } catch (error) {
+          console.error(`Failed to mark appointment ${id} as paid:`, error)
+          errorCount++
+          throw error
+        }
+      })
+      
+      await Promise.allSettled(paidPromises)
+      
+      await fetchAppointments()
+      await fetchStats()
+      
+      setSelectedAppointments(new Set())
+      setSelectAll(false)
+      setShowBulkPaidConfirm(false)
+      
+      if (successCount > 0) {
+        toast.success(`Đã đánh dấu ${successCount} lịch hẹn là đã thanh toán`)
+      }
+      if (errorCount > 0) {
+        toast.error(`Có ${errorCount} lịch hẹn không thể đánh dấu`)
+      }
+    } catch (error) {
+      console.error('Error bulk marking appointments as paid:', error)
+      toast.error('Không thể đánh dấu một số lịch hẹn')
+    } finally {
+      setBulkMarking(false)
+    }
+  }
+
+  // Check if account already exists by email
+  const checkAccountExists = async (email: string): Promise<boolean> => {
+    try {
+      const users = await apiService.searchUsers(email)
+      return users.some(user => user.email.toLowerCase() === email.toLowerCase())
+    } catch (error) {
+      console.error('Error checking account existence:', error)
+      return false
+    }
+  }
+
+  // Create account for a single patient
+  const createPatientAccount = async (appointment: Appointment): Promise<{ success: boolean; message: string }> => {
+    try {
+      // Check if account already exists
+      const accountExists = await checkAccountExists(appointment.email)
+      if (accountExists) {
+        return { success: false, message: `Tài khoản với email ${appointment.email} đã tồn tại` }
+      }
+
+      // Create new patient account
+      const newUser = await apiService.createUser({
+        username: appointment.email,
+        email: appointment.email,
+        password: '123456',
+        fullName: appointment.fullName,
+        role: 'PATIENT',
+        phone: appointment.phone,
+        active: true
+      })
+
+      return { success: true, message: `Tạo tài khoản thành công cho ${appointment.fullName}` }
+    } catch (error: any) {
+      return { success: false, message: `Lỗi tạo tài khoản cho ${appointment.fullName}: ${error.message}` }
+    }
+  }
+
+  // Bulk create accounts function
+  const handleBulkCreateAccounts = async () => {
+    if (selectedAppointments.size === 0) {
+      toast.error('Vui lòng chọn ít nhất một lịch hẹn để tạo tài khoản')
+      return
+    }
+
+    // Filter appointments that have email
+    const appointmentsWithEmail = appointments.filter(apt => 
+      selectedAppointments.has(apt.id) && apt.email && apt.email.trim() !== ''
+    )
+
+    if (appointmentsWithEmail.length === 0) {
+      toast.error('Không có lịch hẹn nào có email để tạo tài khoản')
+      return
+    }
+
+    setCreatingAccount(true)
+    let successCount = 0
+    let errorCount = 0
+    let skipCount = 0
+
+    try {
+      const createPromises = appointmentsWithEmail.map(async (appointment) => {
+        const result = await createPatientAccount(appointment)
+        if (result.success) {
+          successCount++
+        } else {
+          if (result.message.includes('đã tồn tại')) {
+            skipCount++
+          } else {
+            errorCount++
+          }
+        }
+        return result
+      })
+
+      await Promise.all(createPromises)
+
+      setSelectedAppointments(new Set())
+      setSelectAll(false)
+
+      // Show results
+      if (successCount > 0) {
+        toast.success(`Đã tạo thành công ${successCount} tài khoản mới. Password mặc định: 123456`)
+      }
+      if (skipCount > 0) {
+        toast.success(`Đã bỏ qua ${skipCount} tài khoản đã tồn tại`)
+      }
+      if (errorCount > 0) {
+        toast.error(`Có ${errorCount} tài khoản không thể tạo`)
+      }
+    } catch (error) {
+      console.error('Error bulk creating accounts:', error)
+      toast.error('Có lỗi xảy ra khi tạo tài khoản hàng loạt')
+    } finally {
+      setCreatingAccount(false)
     }
   }
 
@@ -742,11 +1168,26 @@ const BookingManagerPage = () => {
               </div>
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={handleBulkDelete}
-                  className="flex items-center px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
+                  onClick={handleBulkCreateAccounts}
+                  disabled={creatingAccount}
+                  className="flex items-center px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Trash2 className="w-4 h-4 mr-1" />
+                  <UserPlus className="w-4 h-4 mr-1" />
+                  {creatingAccount ? 'Đang tạo...' : 'Tạo tài khoản'}
+                </button>
+                <button
+                  onClick={handleBulkCancel}
+                  className="flex items-center px-3 py-1 bg-orange-600 text-white rounded-md hover:bg-orange-700 text-sm"
+                >
+                  <X className="w-4 h-4 mr-1" />
                   Hủy lịch hẹn
+                </button>
+                <button
+                  onClick={handleBulkPaid}
+                  className="flex items-center px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm"
+                >
+                  <Check className="w-4 h-4 mr-1" />
+                  Paid
                 </button>
                 <button
                   onClick={handleBulkPermanentDelete}
@@ -889,14 +1330,54 @@ const BookingManagerPage = () => {
                         onChange={(e) => updateAppointmentStatus(appointment.id, e.target.value)}
                         className={`text-xs font-medium rounded-full px-3 py-1 border-0 focus:ring-2 focus:ring-blue-500 ${statusColors[appointment.status as keyof typeof statusColors]}`}
                       >
-                        <option value="PENDING">Chờ xác nhận</option>
-                        <option value="CONFIRMED">Đã xác nhận</option>
-                        <option value="PAYMENT_REQUESTED">Yêu cầu thanh toán</option>
-                        <option value="PAID">Đã thanh toán</option>
-                        <option value="COMPLETED">Hoàn thành</option>
-                        <option value="CANCELLED">Đã hủy</option>
-                        <option value="NO_SHOW">Không đến</option>
-                        <option value="AWAITING_DOCTOR_APPROVAL">Đang chờ xác nhận</option>
+                        {/* Always show current status */}
+                        <option value={appointment.status}>
+                          {statusLabels[appointment.status]}
+                        </option>
+                        
+                        {/* Show valid transitions based on current status */}
+                        {appointment.status === 'PENDING' && (
+                          <>
+                            <option value="AWAITING_DOCTOR_APPROVAL">Chờ bác sĩ phản hồi</option>
+                            <option value="CANCELLED">Đã hủy</option>
+                          </>
+                        )}
+                        
+                        {appointment.status === 'AWAITING_DOCTOR_APPROVAL' && (
+                          <>
+                            <option value="CONFIRMED">Đã xác nhận</option>
+                            <option value="CANCELLED">Đã hủy</option>
+                          </>
+                        )}
+                        
+                        {appointment.status === 'CONFIRMED' && (
+                          <>
+                            <option value="PAYMENT_REQUESTED">Yêu cầu thanh toán</option>
+                            <option value="CANCELLED">Đã hủy</option>
+                            <option value="NO_SHOW">Không đến</option>
+                          </>
+                        )}
+                        
+                        {appointment.status === 'PAYMENT_REQUESTED' && (
+                          <>
+                            <option value="PAID">Đã thanh toán</option>
+                            <option value="CANCELLED">Đã hủy</option>
+                            <option value="NO_SHOW">Không đến</option>
+                          </>
+                        )}
+                        
+                        {appointment.status === 'PAID' && (
+                          <>
+                            <option value="COMPLETED">Hoàn thành</option>
+                            <option value="CANCELLED">Đã hủy</option>
+                            <option value="NO_SHOW">Không đến</option>
+                          </>
+                        )}
+                        
+                        {/* Final states - no transitions */}
+                        {(appointment.status === 'COMPLETED' || appointment.status === 'CANCELLED' || appointment.status === 'NO_SHOW') && (
+                          <option disabled>-- Trạng thái cuối --</option>
+                        )}
                       </select>
                     </td>
                     
@@ -905,53 +1386,34 @@ const BookingManagerPage = () => {
                         <button
                           onClick={() => {
                             setSelectedAppointment(appointment)
+                            setIsEditingInView(false)
+                            setViewEditData({ fullName: '', phone: '', email: '', appointmentDate: '', appointmentTime: '', department: '' })
                             setShowDetailModal(true)
                           }}
-                          className="text-blue-600 hover:text-blue-900"
-                          title="Xem chi tiết"
+                          className="px-3 py-1 border border-blue-300 rounded-md text-sm font-medium text-blue-600 bg-white hover:bg-blue-50 hover:border-blue-400"
                         >
-                          <Eye className="w-4 h-4" />
+                          View
                         </button>
-                        
-                        <button
-                          onClick={() => handleEditAppointment(appointment)}
-                          className="text-purple-600 hover:text-purple-900"
-                          title="Chỉnh sửa"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        
+
                         {appointment.status === 'PENDING' && (
-                          <>
-                            <button
-                              onClick={() => {
-                                setSelectedAppointmentForConfirm(appointment)
-                                setShowDoctorModal(true)
-                                setShowDetailModal(false)
-                              }}
-                              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
-                            >
-                              Chỉ định bác sĩ
-                            </button>
-                            <button
-                              onClick={() => {
-                                updateAppointmentStatus(appointment.id, 'CANCELLED')
-                                setShowDetailModal(false)
-                              }}
-                              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700"
-                            >
-                              Hủy lịch
-                            </button>
-                          </>
+                          <button
+                            onClick={() => {
+                              setSelectedAppointmentForConfirm(appointment)
+                              setShowDoctorModal(true)
+                              setShowDetailModal(false)
+                            }}
+                            className="px-3 py-1 border border-green-300 rounded-md text-sm font-medium text-green-600 bg-white hover:bg-green-50 hover:border-green-400"
+                          >
+                            Assign
+                          </button>
                         )}
                         
                         {appointment.status === 'CONFIRMED' && !appointment.paymentRequested && (
                           <button
                             onClick={() => handleRequestPayment(appointment)}
-                            className="text-orange-600 hover:text-orange-900"
-                            title="Yêu cầu thanh toán"
+                            className="px-3 py-1 border border-orange-300 rounded-md text-sm font-medium text-orange-600 bg-white hover:bg-orange-50 hover:border-orange-400"
                           >
-                            <TrendingUp className="w-4 h-4" />
+                            Pay
                           </button>
                         )}
                       </div>
@@ -972,7 +1434,11 @@ const BookingManagerPage = () => {
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium text-gray-900">Chi tiết lịch hẹn #{selectedAppointment.id}</h3>
                 <button
-                  onClick={() => setShowDetailModal(false)}
+                  onClick={() => {
+                    setShowDetailModal(false)
+                    setIsEditingInView(false)
+                    setViewEditData({ fullName: '', phone: '', email: '', appointmentDate: '', appointmentTime: '', department: '' })
+                  }}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-6 h-6" />
@@ -983,34 +1449,102 @@ const BookingManagerPage = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Họ tên</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedAppointment.fullName}</p>
+                    {isEditingInView ? (
+                      <input
+                        type="text"
+                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        value={viewEditData.fullName}
+                        onChange={(e) => setViewEditData({...viewEditData, fullName: e.target.value})}
+                      />
+                    ) : (
+                      <p className="mt-1 text-sm text-gray-900">{selectedAppointment.fullName}</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Số điện thoại</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedAppointment.phone}</p>
+                    {isEditingInView ? (
+                      <input
+                        type="tel"
+                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        value={viewEditData.phone}
+                        onChange={(e) => setViewEditData({...viewEditData, phone: e.target.value})}
+                      />
+                    ) : (
+                      <p className="mt-1 text-sm text-gray-900">{selectedAppointment.phone}</p>
+                    )}
                   </div>
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Email</label>
-                  <p className="mt-1 text-sm text-gray-900">{selectedAppointment.email}</p>
+                  {isEditingInView ? (
+                    <input
+                      type="email"
+                      className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      value={viewEditData.email}
+                      onChange={(e) => setViewEditData({...viewEditData, email: e.target.value})}
+                    />
+                  ) : (
+                    <p className="mt-1 text-sm text-gray-900">{selectedAppointment.email}</p>
+                  )}
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Ngày hẹn</label>
-                    <p className="mt-1 text-sm text-gray-900">{formatDate(selectedAppointment.appointmentDate)}</p>
+                    {isEditingInView ? (
+                      <input
+                        type="date"
+                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        value={viewEditData.appointmentDate}
+                        min={getMinValidDate()}
+                        onChange={(e) => {
+                          setViewEditData({...viewEditData, appointmentDate: e.target.value, appointmentTime: ''})
+                        }}
+                      />
+                    ) : (
+                      <p className="mt-1 text-sm text-gray-900">{formatDate(selectedAppointment.appointmentDate)}</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Giờ hẹn</label>
-                    <p className="mt-1 text-sm text-gray-900">{formatTime(selectedAppointment.appointmentTime)}</p>
+                    {isEditingInView ? (
+                      <select
+                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        value={viewEditData.appointmentTime}
+                        onChange={(e) => setViewEditData({...viewEditData, appointmentTime: e.target.value})}
+                      >
+                        <option value="">Chọn giờ khám</option>
+                        {getValidTimeSlots(viewEditData.appointmentDate).map(timeSlot => (
+                          <option key={timeSlot} value={timeSlot}>{timeSlot}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="mt-1 text-sm text-gray-900">{formatTime(selectedAppointment.appointmentTime)}</p>
+                    )}
                   </div>
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Khoa khám</label>
-                  <p className="mt-1 text-sm text-gray-900">{getDepartmentDisplayName(selectedAppointment.department)}</p>
+                  {isEditingInView ? (
+                    <select
+                      className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      value={viewEditData.department}
+                      onChange={(e) => setViewEditData({...viewEditData, department: e.target.value})}
+                    >
+                      <option value="">Chọn khoa khám</option>
+                      {departments.map((dept) => (
+                        <option key={dept.code} value={dept.code}>
+                          {dept.departmentName}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="mt-1 text-sm text-gray-900">{getDepartmentDisplayName(selectedAppointment.department)}</p>
+                  )}
                 </div>
+
                 
                 {selectedAppointment.doctor && (
                   <div>
@@ -1072,33 +1606,56 @@ const BookingManagerPage = () => {
               </div>
               
               <div className="mt-6 flex justify-end space-x-3">
-                <button
-                  onClick={() => setShowDetailModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                >
-                  Đóng
-                </button>
-                {selectedAppointment.status === 'PENDING' && (
+                {isEditingInView ? (
+                  <>
+                    <button
+                      onClick={handleCancelEditInView}
+                      disabled={updatingAppointment}
+                      className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      onClick={handleSaveInView}
+                      disabled={updatingAppointment || !viewEditData.fullName.trim() || !viewEditData.phone.trim() || !viewEditData.appointmentDate || !viewEditData.appointmentTime || !viewEditData.department}
+                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                    >
+                      {updatingAppointment && (
+                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      )}
+                      {updatingAppointment ? 'Đang lưu...' : 'Lưu'}
+                    </button>
+                  </>
+                ) : (
                   <>
                     <button
                       onClick={() => {
-                        setSelectedAppointmentForConfirm(selectedAppointment)
-                        setShowDoctorModal(true)
                         setShowDetailModal(false)
+                        setIsEditingInView(false)
+                        setViewEditData({ fullName: '', phone: '', email: '', appointmentDate: '', appointmentTime: '', department: '' })
                       }}
-                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+                      className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
                     >
-                      Chỉ định bác sĩ
+                      Đóng
                     </button>
                     <button
-                      onClick={() => {
-                        updateAppointmentStatus(selectedAppointment.id, 'CANCELLED')
-                        setShowDetailModal(false)
-                      }}
-                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700"
+                      onClick={() => handleEditInView(selectedAppointment)}
+                      className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700"
                     >
-                      Hủy lịch
+                      Chỉnh sửa
                     </button>
+                    {selectedAppointment.status === 'PENDING' && (
+                      <button
+                        onClick={() => {
+                          setSelectedAppointmentForConfirm(selectedAppointment)
+                          setShowDoctorModal(true)
+                          setShowDetailModal(false)
+                        }}
+                        className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+                      >
+                        Chỉ định bác sĩ
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -1280,19 +1837,17 @@ const BookingManagerPage = () => {
         </div>
       )}
 
-      {/* Bulk Delete Confirmation Modal */}
-      {showBulkDeleteConfirm && (
+      {/* Bulk Permanent Delete Confirm Modal */}
+      {showBulkPermanentDeleteConfirm && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-md w-full">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium text-gray-900">
-                  Xác nhận xóa lịch hẹn
+                  Xác nhận xóa vĩnh viễn
                 </h3>
                 <button
-                  onClick={() => {
-                    setShowBulkDeleteConfirm(false)
-                  }}
+                  onClick={() => setShowBulkPermanentDeleteConfirm(false)}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-6 h-6" />
@@ -1300,21 +1855,35 @@ const BookingManagerPage = () => {
               </div>
               
               <div className="space-y-3">
+                <div className="flex items-center text-red-600">
+                  <Trash2 className="w-6 h-6 mr-2" />
+                  <span className="font-medium">Cảnh báo: Hành động không thể hoàn tác!</span>
+                </div>
                 <p className="text-sm text-gray-600">
-                  Bạn có chắc chắn muốn xóa {selectedAppointments.size} lịch hẹn đã chọn?
+                  Bạn có chắc chắn muốn <strong>xóa vĩnh viễn</strong> {selectedAppointments.size} lịch hẹn đã chọn?
+                </p>
+                <p className="text-xs text-red-500">
+                  Dữ liệu sẽ bị xóa hoàn toàn khỏi hệ thống và không thể khôi phục.
                 </p>
               </div>
               
               <div className="mt-6 flex justify-end space-x-3">
                 <button
-                  onClick={confirmBulkDelete}
-                  disabled={bulkDeleting}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => setShowBulkPermanentDeleteConfirm(false)}
+                  disabled={bulkPermanentDeleting}
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
                 >
-                  {bulkDeleting && (
+                  Hủy
+                </button>
+                <button
+                  onClick={confirmBulkPermanentDelete}
+                  disabled={bulkPermanentDeleting}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {bulkPermanentDeleting && (
                     <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                   )}
-                  {bulkDeleting ? 'Đang xử lý...' : 'Xóa lịch hẹn'}
+                  {bulkPermanentDeleting ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
                 </button>
               </div>
             </div>
@@ -1487,17 +2056,88 @@ const BookingManagerPage = () => {
         </div>
       )}
 
-      {/* Bulk Permanent Delete Confirm Modal */}
-      {showBulkPermanentDeleteConfirm && (
+      {/* Bulk Cancel Confirm Modal */}
+      {showBulkCancelConfirm && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium text-gray-900">
-                  Xác nhận xóa vĩnh viễn
+                  Xác nhận hủy lịch hẹn
                 </h3>
                 <button
-                  onClick={() => setShowBulkPermanentDeleteConfirm(false)}
+                  onClick={() => setShowBulkCancelConfirm(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex items-center text-orange-600">
+                  <X className="w-6 h-6 mr-2" />
+                  <span className="font-medium">Hủy lịch hẹn</span>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Bạn có chắc chắn muốn <strong>hủy</strong> {selectedAppointments.size} lịch hẹn đã chọn?
+                </p>
+                <p className="text-xs text-gray-500">
+                  Trạng thái các lịch hẹn sẽ được chuyển thành "Đã hủy" và email thông báo sẽ được gửi đến bệnh nhân.
+                </p>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Lý do hủy lịch hẹn <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none"
+                    placeholder="Nhập lý do hủy lịch hẹn..."
+                    value={cancellationReason}
+                    onChange={(e) => setCancellationReason(e.target.value)}
+                    maxLength={500}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {cancellationReason.length}/500 ký tự
+                  </p>
+                </div>
+              </div>
+              
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowBulkCancelConfirm(false)}
+                  disabled={bulkCancelling}
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Đóng
+                </button>
+                <button
+                  onClick={confirmBulkCancel}
+                  disabled={bulkCancelling || !cancellationReason.trim()}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {bulkCancelling && (
+                    <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  )}
+                  {bulkCancelling ? 'Đang hủy...' : 'Hủy lịch hẹn'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Paid Confirm Modal */}
+      {showBulkPaidConfirm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Xác nhận đã thanh toán
+                </h3>
+                <button
+                  onClick={() => setShowBulkPaidConfirm(false)}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-6 h-6" />
@@ -1505,35 +2145,35 @@ const BookingManagerPage = () => {
               </div>
               
               <div className="space-y-3">
-                <div className="flex items-center text-red-600">
-                  <Trash2 className="w-6 h-6 mr-2" />
-                  <span className="font-medium">Cảnh báo: Hành động không thể hoàn tác!</span>
+                <div className="flex items-center text-purple-600">
+                  <Check className="w-6 h-6 mr-2" />
+                  <span className="font-medium">Đánh dấu đã thanh toán</span>
                 </div>
                 <p className="text-sm text-gray-600">
-                  Bạn có chắc chắn muốn <strong>xóa vĩnh viễn</strong> {selectedAppointments.size} lịch hẹn đã chọn?
+                  Bạn có chắc chắn muốn đánh dấu <strong>{selectedAppointments.size}</strong> lịch hẹn đã chọn là <strong>đã thanh toán</strong>?
                 </p>
-                <p className="text-xs text-red-500">
-                  Dữ liệu sẽ bị xóa hoàn toàn khỏi hệ thống và không thể khôi phục.
+                <p className="text-xs text-gray-500">
+                  Trạng thái các lịch hẹn sẽ được chuyển thành "Đã thanh toán".
                 </p>
               </div>
               
               <div className="mt-6 flex justify-end space-x-3">
                 <button
-                  onClick={() => setShowBulkPermanentDeleteConfirm(false)}
-                  disabled={bulkPermanentDeleting}
+                  onClick={() => setShowBulkPaidConfirm(false)}
+                  disabled={bulkMarking}
                   className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
                 >
                   Hủy
                 </button>
                 <button
-                  onClick={confirmBulkPermanentDelete}
-                  disabled={bulkPermanentDeleting}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  onClick={confirmBulkPaid}
+                  disabled={bulkMarking}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                 >
-                  {bulkPermanentDeleting && (
+                  {bulkMarking && (
                     <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                   )}
-                  {bulkPermanentDeleting ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
+                  {bulkMarking ? 'Đang xử lý...' : 'Xác nhận đã thanh toán'}
                 </button>
               </div>
             </div>
