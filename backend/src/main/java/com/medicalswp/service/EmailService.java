@@ -22,7 +22,7 @@ public class EmailService {
     @Autowired
     private JavaMailSender mailSender;
     
-    @Value("${spring.mail.username:medical-system@florismcare.com}")
+    @Value("${spring.mail.username:info@florism.site}")
     private String fromEmail;
     
     @Value("${app.name:Florism Care}")
@@ -31,7 +31,7 @@ public class EmailService {
     @Value("${app.contact.phone:1900 1234}")
     private String contactPhone;
     
-    @Value("${app.contact.email:contact@florismcare.com}")
+    @Value("${app.contact.email:info@florism.site}")
     private String contactEmail;
     
     @Value("${app.contact.address:123 Đường ABC, Quận 1, TP.HCM}")

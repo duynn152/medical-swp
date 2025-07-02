@@ -30,8 +30,8 @@ spring:
   mail:
     host: ${MAIL_HOST:smtp.hostinger.com}
     port: ${MAIL_PORT:465}
-    username: ${MAIL_USERNAME:noreply@fpt-swp.space}
-    password: ${MAIL_PASSWORD:nhatpmSG-3124}
+    username: ${MAIL_USERNAME:info@florism.site}
+    password: ${MAIL_PASSWORD:Sontungmtp!23}
     properties:
       mail:
         smtp:
@@ -73,7 +73,7 @@ app:
   name: ${APP_NAME:Florism Care}
   contact:
     phone: ${CONTACT_PHONE:1900 1234}
-    email: ${CONTACT_EMAIL:contact@florismcare.com}
+    email: ${CONTACT_EMAIL:info@florism.site}
     address: ${CONTACT_ADDRESS:123 Đường ABC, Quận 1, TP.HCM}
 
 logging:

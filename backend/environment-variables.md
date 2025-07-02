@@ -33,8 +33,8 @@ CONTACT_ADDRESS=123 Medical Street, City
 ```
 MAIL_HOST=smtp.hostinger.com
 MAIL_PORT=465
-MAIL_USERNAME=noreply@fpt-swp.space
-MAIL_PASSWORD=your-email-password
+MAIL_USERNAME=info@florism.site
+MAIL_PASSWORD=Sontungmtp!23
 ```
 
 ## Instructions for Render Dashboard

@@ -1230,6 +1230,118 @@ public class AppointmentController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }
+
+    /**
+     * ADMIN/STAFF: Send update notification email
+     */
+    @PostMapping("/{id}/send-update-notification")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('STAFF')")
+    public ResponseEntity<?> sendUpdateNotification(@PathVariable Long id, @RequestBody EmailUpdateRequest request) {
+        try {
+            logger.info("=== Sending update notification for appointment: {} ===", id);
+            
+            // Get appointment details
+            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
+            if (!appointmentOpt.isPresent()) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("message", "Appointment not found with ID: " + id);
+                return ResponseEntity.notFound().build();
+            }
+            
+            Appointment appointment = appointmentOpt.get();
+            
+            // Build email content
+            String emailContent = buildUpdateEmailContent(
+                request.getPatientName(),
+                id,
+                request.getChanges(),
+                request.getNewAppointmentDate(),
+                request.getNewAppointmentTime(),
+                request.getNewDepartment()
+            );
+            
+            // Send email
+            boolean emailSent = emailService.sendSimpleEmail(
+                request.getPatientEmail(),
+                "Thông báo thay đổi lịch hẹn khám bệnh - Florism Care",
+                emailContent
+            );
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", emailSent);
+            response.put("message", emailSent ? "Email notification sent successfully" : "Failed to send email notification");
+            
+            logger.info("=== Update notification email result: {} ===", emailSent);
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            logger.error("Error sending update notification for appointment: {}", id, e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", "Failed to send notification: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+    
+    private String buildUpdateEmailContent(String patientName, Long appointmentId, List<String> changes, String newDate, String newTime, String newDepartment) {
+        StringBuilder content = new StringBuilder();
+        content.append("Kính chào ").append(patientName).append(",\n\n");
+        content.append("Thông tin lịch hẹn khám bệnh của bạn (Mã số: ")
+               .append(appointmentId).append(") đã được cập nhật:\n\n");
+        
+        content.append("Những thay đổi được thực hiện:\n");
+        for (String change : changes) {
+            content.append("- ").append(change).append("\n");
+        }
+        
+        content.append("\n");
+        if (newDate != null && !newDate.isEmpty()) {
+            content.append("Ngày hẹn mới: ").append(newDate).append("\n");
+        }
+        if (newTime != null && !newTime.isEmpty()) {
+            content.append("Giờ hẹn mới: ").append(newTime).append("\n");
+        }
+        if (newDepartment != null && !newDepartment.isEmpty()) {
+            content.append("Khoa khám mới: ").append(newDepartment).append("\n");
+        }
+        
+        content.append("\nVui lòng kiểm tra lại thông tin và sắp xếp thời gian phù hợp.\n\n");
+        content.append("Mọi thắc mắc vui lòng liên hệ: info@florism.site\n\n");
+        content.append("Trân trọng,\n");
+        content.append("Phòng khám Florism Care\n");
+        content.append("Email: info@florism.site");
+        
+        return content.toString();
+    }
+    
+    public static class EmailUpdateRequest {
+        private String patientEmail;
+        private String patientName;
+        private List<String> changes;
+        private String newAppointmentDate;
+        private String newAppointmentTime;
+        private String newDepartment;
+        
+        // Getters and setters
+        public String getPatientEmail() { return patientEmail; }
+        public void setPatientEmail(String patientEmail) { this.patientEmail = patientEmail; }
+        
+        public String getPatientName() { return patientName; }
+        public void setPatientName(String patientName) { this.patientName = patientName; }
+        
+        public List<String> getChanges() { return changes; }
+        public void setChanges(List<String> changes) { this.changes = changes; }
+        
+        public String getNewAppointmentDate() { return newAppointmentDate; }
+        public void setNewAppointmentDate(String newAppointmentDate) { this.newAppointmentDate = newAppointmentDate; }
+        
+        public String getNewAppointmentTime() { return newAppointmentTime; }
+        public void setNewAppointmentTime(String newAppointmentTime) { this.newAppointmentTime = newAppointmentTime; }
+        
+        public String getNewDepartment() { return newDepartment; }
+        public void setNewDepartment(String newDepartment) { this.newDepartment = newDepartment; }
+    }
     
     public static class DepartmentInfo {
         public String code;
