@@ -93,7 +93,11 @@ public class SecurityConfig implements WebMvcConfigurer {
                 // Comment admin operations require authentication
                 .requestMatchers("/comments/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_DOCTOR", "ROLE_STAFF")
                 
-                // User management - admin only
+                // User profile endpoints - allow patients to access their own profile
+                .requestMatchers(HttpMethod.GET, "/users/profile").hasAuthority("ROLE_PATIENT")
+                .requestMatchers(HttpMethod.PUT, "/users/profile").hasAuthority("ROLE_PATIENT")
+                
+                // User management - admin only (must come after profile endpoints)
                 .requestMatchers("/users/**").hasAuthority("ROLE_ADMIN")
                 
                 // Appointment management - phải đứng sau /appointments/public/**

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Calendar, Clock, User, MapPin, Phone, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 import { apiService, Appointment } from '../utils/api'
+import { formatDate } from '../utils/dateFormat'
 import toast from 'react-hot-toast'
 
 const MyAppointmentsPage: React.FC = () => {
@@ -202,7 +203,7 @@ const MyAppointmentsPage: React.FC = () => {
                 <div className="grid md:grid-cols-2 gap-4 mb-4">
                   <div className="flex items-center space-x-2 text-gray-600">
                     <Calendar className="w-4 h-4" />
-                    <span>{new Date(appointment.appointmentDate).toLocaleDateString('vi-VN')}</span>
+                    <span>{formatDate(appointment.appointmentDate)}</span>
                   </div>
                   <div className="flex items-center space-x-2 text-gray-600">
                     <Clock className="w-4 h-4" />

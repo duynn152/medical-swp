@@ -28,27 +28,97 @@ const AppointmentPage = () => {
 
   // Check authentication and auto-fill user info
   useEffect(() => {
-    const token = localStorage.getItem('authToken')
-    const userInfoStr = localStorage.getItem('userInfo')
-    
-    if (token && userInfoStr) {
-      try {
-        const user = JSON.parse(userInfoStr)
-        if (user.role === 'PATIENT') {
-          setIsLoggedIn(true)
-          setUserInfo(user)
-          
-          // Auto-fill form with user information
-          setFormData(prev => ({
-            ...prev,
-            fullName: user.fullName || '',
-            email: user.email || '',
-            phone: user.phone || '' // This might be empty if not in profile
-          }))
+    const loadUserInfo = async () => {
+      const token = localStorage.getItem('authToken')
+      const userInfoStr = localStorage.getItem('userInfo')
+      
+      if (token && userInfoStr) {
+        try {
+          const user = JSON.parse(userInfoStr)
+          if (user.role === 'PATIENT') {
+            setIsLoggedIn(true)
+            setUserInfo(user)
+            
+            // Try to fetch fresh user data from API
+            try {
+              const freshUserData = await apiService.getMyProfile()
+              
+              // Update localStorage with fresh data
+              localStorage.setItem('userInfo', JSON.stringify(freshUserData))
+              setUserInfo(freshUserData)
+              
+              // Auto-fill form with fresh user information
+              setFormData(prev => ({
+                ...prev,
+                fullName: freshUserData.fullName || '',
+                email: freshUserData.email || '',
+                phone: freshUserData.phone || ''
+              }))
+              
+              console.log('Fresh user data loaded:', {
+                fullName: freshUserData.fullName,
+                email: freshUserData.email,
+                phone: freshUserData.phone
+              })
+            } catch (apiError: any) {
+              // Check if it's a 403 error (permission issue) and silently fallback
+              if (apiError.message && apiError.message.includes('403')) {
+                console.info('Using cached user data due to permission restrictions')
+              } else {
+                console.warn('Could not fetch fresh user data, using cached data:', apiError)
+              }
+              
+              // Fallback to cached user information
+              setFormData(prev => ({
+                ...prev,
+                fullName: user.fullName || '',
+                email: user.email || '',
+                phone: user.phone || ''
+              }))
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing user info:', error)
         }
-      } catch (error) {
-        console.error('Error parsing user info:', error)
       }
+    }
+    
+    loadUserInfo()
+  }, [])
+
+  // Listen for storage changes to update user info when profile is updated
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'userInfo' && e.newValue) {
+        try {
+          const updatedUser = JSON.parse(e.newValue)
+          if (updatedUser.role === 'PATIENT') {
+            setUserInfo(updatedUser)
+            
+            // Update form with new user information
+            setFormData(prev => ({
+              ...prev,
+              fullName: updatedUser.fullName || prev.fullName,
+              email: updatedUser.email || prev.email,
+              phone: updatedUser.phone || prev.phone
+            }))
+            
+            console.log('User info updated from another tab:', {
+              fullName: updatedUser.fullName,
+              email: updatedUser.email,
+              phone: updatedUser.phone
+            })
+          }
+        } catch (error) {
+          console.error('Error parsing updated user info:', error)
+        }
+      }
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
     }
   }, [])
 
@@ -79,10 +149,91 @@ const AppointmentPage = () => {
     fetchDepartments()
   }, [])
 
-  const timeSlots = [
-    '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-    '14:00', '14:30', '15:00', '15:30', '16:00', '16:30'
-  ]
+  // Get minimum date (today)
+  const getMinDate = () => {
+    const today = new Date()
+    return today.toISOString().split('T')[0]
+  }
+
+  // Get maximum date (2 years from now)  
+  const getMaxDate = () => {
+    const maxDate = new Date()
+    maxDate.setFullYear(maxDate.getFullYear() + 2)
+    return maxDate.toISOString().split('T')[0]
+  }
+
+  // Get valid time slots based on selected date
+  const getValidTimeSlots = (selectedDate: string) => {
+    const allTimeSlots = [
+      '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+      '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'
+    ]
+    
+    if (!selectedDate) return allTimeSlots
+    
+    const now = new Date()
+    const selectedDateTime = new Date(selectedDate)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    selectedDateTime.setHours(0, 0, 0, 0)
+    
+    // If selected date is not today, show all time slots
+    if (selectedDateTime.getTime() !== today.getTime()) {
+      return allTimeSlots
+    }
+    
+    // If selected date is today, only show time slots that are at least 2 hours from now
+    const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000) // Add 2 hours
+    
+    return allTimeSlots.filter(timeSlot => {
+      const [hours, minutes] = timeSlot.split(':').map(Number)
+      const slotDateTime = new Date()
+      slotDateTime.setHours(hours, minutes, 0, 0)
+      
+      return slotDateTime >= twoHoursFromNow
+    })
+  }
+  
+  const validTimeSlots = getValidTimeSlots(formData.appointmentDate)
+  
+  // Reset time if it becomes invalid due to date change
+  useEffect(() => {
+    if (formData.appointmentTime && !validTimeSlots.includes(formData.appointmentTime)) {
+      setFormData(prev => ({ ...prev, appointmentTime: '' }))
+    }
+  }, [formData.appointmentDate, formData.appointmentTime, validTimeSlots])
+
+  // Convert date to API format (yyyy-MM-dd)
+  const convertDateForAPI = (dateString: string) => {
+    if (!dateString) return ''
+    // Input is already in yyyy-mm-dd format from the dropdown selection
+    return dateString
+  }
+
+  // Add date validation function - updated to check 2 hours ahead
+  const isValidDate = (dateString: string) => {
+    if (!dateString) return false
+    
+    const date = new Date(dateString)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    return date instanceof Date && !isNaN(date.getTime()) && date >= today
+  }
+
+  const isValidDateTime = (dateString: string, timeString: string) => {
+    if (!dateString || !timeString) return false
+    
+    const now = new Date()
+    const [hours, minutes] = timeString.split(':').map(Number)
+    const appointmentDateTime = new Date(dateString)
+    appointmentDateTime.setHours(hours, minutes, 0, 0)
+    
+    // Must be at least 2 hours from now
+    const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000)
+    
+    return appointmentDateTime >= twoHoursFromNow
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -96,10 +247,7 @@ const AppointmentPage = () => {
         throw new Error('Vui lòng điền đầy đủ thông tin bắt buộc')
       }
 
-      // Validate date format and value
-      if (!isValidDate(formData.appointmentDate)) {
-        throw new Error('Ngày khám không hợp lệ. Vui lòng chọn ngày từ hôm nay trở đi.')
-      }
+
 
       console.log('Submitting appointment with date:', formData.appointmentDate)
 
@@ -127,7 +275,7 @@ const AppointmentPage = () => {
         fullName: formData.fullName,
         phone: formData.phone,
         email: formData.email,
-        appointmentDate: formData.appointmentDate,
+        appointmentDate: convertDateForAPI(formData.appointmentDate),
         appointmentTime: formData.appointmentTime,
         department: formData.department,
         reason: formData.reason || undefined
@@ -141,16 +289,28 @@ const AppointmentPage = () => {
         appointmentId: response.appointmentId
       })
 
-      // Reset form
-      setFormData({
-        fullName: '',
-        phone: '',
-        email: '',
-        appointmentDate: '',
-        appointmentTime: '',
-        department: '',
-        reason: ''
-      })
+      // Reset form - preserve user info if logged in, only clear appointment-specific fields
+      if (isLoggedIn && userInfo) {
+        setFormData(prev => ({
+          fullName: userInfo.fullName || '',
+          phone: userInfo.phone || '',
+          email: userInfo.email || '',
+          appointmentDate: '',
+          appointmentTime: '',
+          department: '',
+          reason: ''
+        }))
+      } else {
+        setFormData({
+          fullName: '',
+          phone: '',
+          email: '',
+          appointmentDate: '',
+          appointmentTime: '',
+          department: '',
+          reason: ''
+        })
+      }
 
     } catch (error) {
       console.error('Error creating appointment:', error)
@@ -161,35 +321,17 @@ const AppointmentPage = () => {
     } finally {
       setIsSubmitting(false)
     }
-      }
-  
-  // Add date validation function
-  const isValidDate = (dateString: string) => {
-    if (!dateString) return false
-    const date = new Date(dateString)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    return date instanceof Date && !isNaN(date.getTime()) && date >= today
   }
 
   // Add console logging for debugging
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     
-    // Log date changes for debugging
-    if (name === 'appointmentDate') {
-      console.log('Date selected:', value)
-      console.log('Is valid date:', isValidDate(value))
-    }
-    
     setFormData({
       ...formData,
       [name]: value
     })
   }
-
-  // Get minimum date (today)
-  const today = new Date().toISOString().split('T')[0]
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
@@ -225,21 +367,6 @@ const AppointmentPage = () => {
           </div>
         )}
 
-        {/* Login Status for Patients */}
-        {isLoggedIn && (
-          <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center space-x-3">
-              <CheckCircle className="w-6 h-6 text-blue-600" />
-              <div>
-                <p className="text-blue-800 font-medium">Bạn đã đăng nhập</p>
-                <p className="text-blue-700 text-sm">
-                  Thông tin cá nhân đã được tự động điền. Chào {userInfo?.fullName}!
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
         <div className="grid lg:grid-cols-2 gap-12">
           {/* Form */}
           <div className="bg-white p-8 rounded-lg shadow-sm">
@@ -248,11 +375,6 @@ const AppointmentPage = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   <User className="w-4 h-4 inline mr-2" />
                   Họ và tên *
-                  {isLoggedIn && (
-                    <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                      Đã đăng nhập
-                    </span>
-                  )}
                 </label>
                 <input
                   type="text"
@@ -268,11 +390,6 @@ const AppointmentPage = () => {
                   }`}
                   placeholder={isLoggedIn ? "Thông tin đã được tự động điền" : "Nhập họ và tên"}
                 />
-                {isLoggedIn && (
-                  <p className="mt-1 text-sm text-blue-600">
-                    Thông tin được lấy từ tài khoản của bạn
-                  </p>
-                )}
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
@@ -280,11 +397,6 @@ const AppointmentPage = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Phone className="w-4 h-4 inline mr-2" />
                     Số điện thoại *
-                    {isLoggedIn && (
-                      <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                        Đã đăng nhập
-                      </span>
-                    )}
                   </label>
                   <input
                     type="tel"
@@ -292,30 +404,24 @@ const AppointmentPage = () => {
                     required
                     value={formData.phone}
                     onChange={handleChange}
-                    disabled={isLoggedIn || isSubmitting}
-                    className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      isLoggedIn 
+                    disabled={(isLoggedIn && !!formData.phone) || isSubmitting}
+                    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      (isLoggedIn && !!formData.phone)
                         ? 'bg-gray-50 cursor-not-allowed text-gray-600' 
                         : ''
                     }`}
-                    placeholder={isLoggedIn ? "Số điện thoại đã được tự động điền" : "0123456789"}
+                    placeholder={
+                      isLoggedIn 
+                        ? (formData.phone ? "Số điện thoại đã được tự động điền" : "Nhập số điện thoại của bạn")
+                        : "0123456789"
+                    }
                   />
-                  {isLoggedIn && (
-                    <p className="mt-1 text-sm text-blue-600">
-                      {formData.phone ? 'Số điện thoại từ tài khoản của bạn' : 'Chưa có số điện thoại trong tài khoản'}
-                    </p>
-                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Mail className="w-4 h-4 inline mr-2" />
                     Email
-                    {isLoggedIn && (
-                      <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                        Đã đăng nhập
-                      </span>
-                    )}
                   </label>
                   <input
                     type="email"
@@ -330,11 +436,6 @@ const AppointmentPage = () => {
                     }`}
                     placeholder={isLoggedIn ? "Email đã được tự động điền" : "email@example.com"}
                   />
-                  {isLoggedIn && (
-                    <p className="mt-1 text-sm text-blue-600">
-                      Email từ tài khoản đăng nhập
-                    </p>
-                  )}
                 </div>
               </div>
 
@@ -369,9 +470,10 @@ const AppointmentPage = () => {
                     required
                     value={formData.appointmentDate}
                     onChange={handleChange}
-                    min={today}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     disabled={isSubmitting}
+                    min={getMinDate()}
+                    max={getMaxDate()}
                   />
                 </div>
 
@@ -389,10 +491,11 @@ const AppointmentPage = () => {
                     disabled={isSubmitting}
                   >
                     <option value="">Chọn giờ khám</option>
-                    {timeSlots.map((time) => (
+                    {validTimeSlots.map((time) => (
                       <option key={time} value={time}>{time}</option>
                     ))}
                   </select>
+
                 </div>
               </div>
 

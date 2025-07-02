@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { User, Mail, Calendar, MapPin, Phone, Edit3, Save, X } from 'lucide-react'
 import { apiService } from '../utils/api'
+import { formatDate } from '../utils/dateFormat'
 import toast from 'react-hot-toast'
 
 const ProfilePage: React.FC = () => {
@@ -55,13 +56,13 @@ const ProfilePage: React.FC = () => {
         fullName: formData.fullName,
         birth: formData.birth || null,
         gender: formData.gender as 'MALE' | 'FEMALE' | 'OTHER' | undefined,
-        phone: formData.phone || null
+        phone: formData.phone || ''  // Allow empty phone string to be saved
       }
       
-      // Remove empty values
+      // Remove empty values except phone (allow empty phone to be saved)
       if (!updateData.birth) delete updateData.birth
       if (!updateData.gender) delete updateData.gender
-      if (!updateData.phone) delete updateData.phone
+      // Keep phone field even if empty - users should be able to save empty phone
       
       const updatedUser = await apiService.updateMyProfile(updateData)
       
@@ -218,7 +219,7 @@ const ProfilePage: React.FC = () => {
                 />
               ) : (
                 <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
-                  {user.birth ? new Date(user.birth).toLocaleDateString('vi-VN') : 'Chưa cập nhật'}
+                  {user.birth ? formatDate(user.birth) : 'Chưa cập nhật'}
                 </p>
               )}
             </div>

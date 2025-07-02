@@ -1,25 +1,52 @@
 import React, { useState, useEffect } from 'react'
 import { Comment as CommentType, apiService } from '../utils/api'
-import { MessageCircle, User, Calendar, ThumbsUp, ThumbsDown, Reply } from 'lucide-react'
+import { MessageCircle, User, Calendar, ThumbsUp, ThumbsDown, Reply, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface CommentProps {
   comment: CommentType
   onReplyAdded?: () => void
+  onCommentDeleted?: () => void
 }
 
-const Comment: React.FC<CommentProps> = ({ comment, onReplyAdded }) => {
+const Comment: React.FC<CommentProps> = ({ comment, onReplyAdded, onCommentDeleted }) => {
   const [userReaction, setUserReaction] = useState<'LIKE' | 'DISLIKE' | null>(null)
   const [likeCount, setLikeCount] = useState(comment.likeCount || 0)
   const [dislikeCount, setDislikeCount] = useState(comment.dislikeCount || 0)
   const [showReplyForm, setShowReplyForm] = useState(false)
   const [replyData, setReplyData] = useState({ authorName: '', content: '' })
   const [isSubmittingReply, setIsSubmittingReply] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [canDelete, setCanDelete] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isDeleted, setIsDeleted] = useState(false)
 
   useEffect(() => {
     // Load user's reaction when component mounts
     loadUserReaction()
+    // Check if user is logged in and auto-fill name for replies
+    checkUserLogin()
   }, [comment.id])
+
+  const checkUserLogin = () => {
+    const userInfo = localStorage.getItem('userInfo')
+    if (userInfo) {
+      try {
+        const user = JSON.parse(userInfo)
+        setReplyData(prev => ({
+          ...prev,
+          authorName: user.fullName || user.username || ''
+        }))
+        setIsLoggedIn(true)
+        
+        // Check if user can delete comments (admin, staff only)
+        const allowedRoles = ['ADMIN', 'STAFF']
+        setCanDelete(allowedRoles.includes(user.role))
+      } catch (error) {
+        console.error('Error parsing user info:', error)
+      }
+    }
+  }
 
   const loadUserReaction = async () => {
     try {
@@ -118,6 +145,38 @@ const Comment: React.FC<CommentProps> = ({ comment, onReplyAdded }) => {
       .slice(0, 2)
   }
 
+  const handleDeleteComment = async () => {
+    if (!canDelete) return
+    
+    // Add confirmation dialog
+    if (!window.confirm('Bạn có chắc chắn muốn xóa bình luận này?')) {
+      return
+    }
+    
+    setIsDeleting(true)
+    try {
+      const response = await apiService.deleteComment(comment.id)
+      if (response.success) {
+        toast.success('Bình luận đã được xóa thành công!')
+        // Immediately hide the comment from UI
+        setIsDeleted(true)
+        // Add a small delay to ensure backend has processed the deletion
+        setTimeout(() => {
+          onCommentDeleted?.()
+        }, 500)
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Lỗi khi xóa bình luận')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // Hide comment if it's been deleted
+  if (isDeleted) {
+    return null
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
       <div className="flex items-start space-x-3">
@@ -175,6 +234,18 @@ const Comment: React.FC<CommentProps> = ({ comment, onReplyAdded }) => {
               <Reply className="w-4 h-4" />
               <span>Trả lời</span>
             </button>
+
+            {/* Delete Button for Admin/Staff */}
+            {canDelete && (
+              <button
+                onClick={handleDeleteComment}
+                disabled={isDeleting}
+                className="flex items-center space-x-1 px-3 py-1 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeleting ? 'Đang xóa...' : 'Xóa'}</span>
+              </button>
+            )}
           </div>
 
           {/* Reply Form */}
@@ -183,10 +254,15 @@ const Comment: React.FC<CommentProps> = ({ comment, onReplyAdded }) => {
               <div className="space-y-3">
                 <input
                   type="text"
-                  placeholder="Tên của bạn"
+                  placeholder={isLoggedIn ? "Tên của bạn đã được tự động điền" : "Tên của bạn"}
                   value={replyData.authorName}
                   onChange={(e) => setReplyData(prev => ({ ...prev, authorName: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={isLoggedIn}
+                  className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                    isLoggedIn 
+                      ? 'bg-gray-100 cursor-not-allowed text-gray-600' 
+                      : ''
+                  }`}
                   maxLength={100}
                 />
                 <textarea

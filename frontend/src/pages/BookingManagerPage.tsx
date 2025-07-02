@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Calendar, Clock, User, Phone, Mail, Building2, Check, X, Eye, Search, AlertCircle, CheckCircle, XCircle, Calendar as CalendarIcon, TrendingUp, UserCheck, Trash2, Edit } from 'lucide-react'
 import { apiService, DepartmentInfo } from '../utils/api'
+import { formatDate, formatDateWithTime } from '../utils/dateFormat'
 import toast from 'react-hot-toast'
 
 interface Appointment {
@@ -467,9 +468,7 @@ const BookingManagerPage = () => {
     }
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('vi-VN')
-  }
+
 
   const formatTime = (timeString: string) => {
     return timeString.slice(0, 5)
@@ -1137,7 +1136,7 @@ const BookingManagerPage = () => {
                   <strong>Khoa:</strong> {getDepartmentDisplayName(selectedAppointmentForConfirm.department)}
                 </p>
                 <p className="text-sm text-gray-600">
-                  <strong>Ngày giờ:</strong> {new Date(selectedAppointmentForConfirm.appointmentDate).toLocaleDateString('vi-VN')} lúc {selectedAppointmentForConfirm.appointmentTime.slice(0, 5)}
+                  <strong>Ngày giờ:</strong> {formatDateWithTime(selectedAppointmentForConfirm.appointmentDate, selectedAppointmentForConfirm.appointmentTime)}
                 </p>
               </div>
               
@@ -1249,7 +1248,7 @@ const BookingManagerPage = () => {
                   <strong>Khoa:</strong> {getDepartmentDisplayName(selectedAppointmentForPayment.department)}
                 </p>
                 <p className="text-sm text-gray-600">
-                  <strong>Ngày giờ:</strong> {new Date(selectedAppointmentForPayment.appointmentDate).toLocaleDateString('vi-VN')} lúc {selectedAppointmentForPayment.appointmentTime.slice(0, 5)}
+                  <strong>Ngày giờ:</strong> {formatDateWithTime(selectedAppointmentForPayment.appointmentDate, selectedAppointmentForPayment.appointmentTime)}
                 </p>
               </div>
               

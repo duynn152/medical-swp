@@ -44,6 +44,7 @@ export interface CreateUserRequest {
   gender?: 'MALE' | 'FEMALE' | 'OTHER'
   role: 'ADMIN' | 'DOCTOR' | 'STAFF' | 'PATIENT'
   specialty?: string
+  phone?: string
   active?: boolean
 }
 

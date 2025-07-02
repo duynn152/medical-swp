@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Calendar, Clock, User, Phone, Mail, Building2, Check, X, AlertCircle, RefreshCw } from 'lucide-react'
 import { apiService, Appointment } from '../utils/api'
+import { formatDate, formatTime, formatDateTime } from '../utils/dateFormat'
 import toast from 'react-hot-toast'
 
 const PendingApprovalsPage = () => {
@@ -70,18 +71,6 @@ const PendingApprovalsPage = () => {
     } finally {
       setProcessing(false)
     }
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('vi-VN')
-  }
-
-  const formatTime = (timeString: string) => {
-    return timeString.slice(0, 5)
-  }
-
-  const formatDateTime = (dateTimeString: string) => {
-    return new Date(dateTimeString).toLocaleString('vi-VN')
   }
 
   if (loading) {

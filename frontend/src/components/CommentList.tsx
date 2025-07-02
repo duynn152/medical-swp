@@ -127,6 +127,7 @@ const CommentList: React.FC<CommentListProps> = ({ blogPostId }) => {
               key={comment.id} 
               comment={comment}
               onReplyAdded={handleCommentAdded}
+              onCommentDeleted={handleCommentAdded}
             />
           ))}
         </div>

@@ -115,11 +115,6 @@ const CommentForm: React.FC<CommentFormProps> = ({ blogPostId, onCommentAdded })
         <div>
           <label htmlFor="authorName" className="block text-sm font-medium text-gray-700 mb-1">
             Họ và tên *
-            {isLoggedIn && (
-              <span className="ml-2 text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
-                Đã đăng nhập
-              </span>
-            )}
           </label>
           <div className="relative">
             <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -143,11 +138,6 @@ const CommentForm: React.FC<CommentFormProps> = ({ blogPostId, onCommentAdded })
           </div>
           {errors.authorName && (
             <p className="mt-1 text-sm text-red-600">{errors.authorName}</p>
-          )}
-          {isLoggedIn && (
-            <p className="mt-1 text-sm text-green-600">
-              Bình luận sẽ được đăng dưới tên tài khoản của bạn
-            </p>
           )}
         </div>
 

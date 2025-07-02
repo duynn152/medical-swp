@@ -11,6 +11,7 @@ interface CreateUserForm {
   gender: 'MALE' | 'FEMALE' | 'OTHER'
   role: 'ADMIN' | 'DOCTOR' | 'STAFF' | 'PATIENT'
   specialty: string
+  phone: string
 }
 
 interface EditUserForm {
@@ -22,6 +23,7 @@ interface EditUserForm {
   role: 'ADMIN' | 'DOCTOR' | 'STAFF' | 'PATIENT'
   specialty: string
   active: boolean
+  phone: string
 }
 
 interface ImportResult {
@@ -61,7 +63,8 @@ const UsersPage = () => {
     birth: '',
     gender: 'MALE',
     role: 'PATIENT',
-    specialty: ''
+    specialty: '',
+    phone: ''
   })
   
   const [editForm, setEditForm] = useState<EditUserForm>({
@@ -72,7 +75,8 @@ const UsersPage = () => {
     gender: 'MALE',
     role: 'PATIENT',
     specialty: '',
-    active: true
+    active: true,
+    phone: ''
   })
 
   // Import states
@@ -282,7 +286,8 @@ const UsersPage = () => {
         gender: createForm.gender,
         role: createForm.role,
         ...(createForm.role === 'DOCTOR' && { specialty: createForm.specialty }),
-        active: true
+        active: true,
+        phone: createForm.phone
       }
       
       await apiService.createUser(createUserData)
@@ -296,7 +301,8 @@ const UsersPage = () => {
         birth: '',
         gender: 'MALE',
         role: 'PATIENT',
-        specialty: ''
+        specialty: '',
+        phone: ''
       })
       loadUsers()
     } catch (err: any) {
@@ -317,7 +323,8 @@ const UsersPage = () => {
         gender: editForm.gender,
         role: editForm.role,
         ...(editForm.role === 'DOCTOR' && { specialty: editForm.specialty }),
-        active: editForm.active
+        active: editForm.active,
+        phone: editForm.phone
       }
       
       console.log('Debug: Updating user with data:', updateData)
@@ -344,7 +351,8 @@ const UsersPage = () => {
       gender: (user.gender as 'MALE' | 'FEMALE' | 'OTHER') || 'MALE',
       role: user.role,
       specialty: user.specialty || '',
-      active: user.active
+      active: user.active,
+      phone: user.phone || ''
     })
     setShowEditModal(true)
   }
@@ -552,6 +560,9 @@ Nurse Bob Wilson,nursebob,bob.wilson@hospital.com,1988-07-10,MALE,STAFF,`
                     User
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Phone
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Role
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -598,6 +609,11 @@ Nurse Bob Wilson,nursebob,bob.wilson@hospital.com,1988-07-10,MALE,STAFF,`
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm text-gray-900">
+                        {user.phone || '-'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
                         {user.role}
                       </span>
@@ -621,10 +637,10 @@ Nurse Bob Wilson,nursebob,bob.wilson@hospital.com,1988-07-10,MALE,STAFF,`
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {user.birth ? new Date(user.birth).toLocaleDateString() : '-'}
+                      {user.birth ? new Date(user.birth).toLocaleDateString('vi-VN') : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(user.createdAt).toLocaleDateString()}
+                      {new Date(user.createdAt).toLocaleDateString('vi-VN')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end space-x-2">
@@ -866,6 +882,16 @@ Nurse Bob Wilson,nursebob,bob.wilson@hospital.com,1988-07-10,MALE,STAFF,`
                 </div>
               )}
               
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Phone</label>
+                <input
+                  type="text"
+                  className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={createForm.phone}
+                  onChange={(e) => setCreateForm({...createForm, phone: e.target.value})}
+                />
+              </div>
+              
               <div className="flex justify-end space-x-2 mt-6">
                 <button
                   type="button"
@@ -996,6 +1022,16 @@ Nurse Bob Wilson,nursebob,bob.wilson@hospital.com,1988-07-10,MALE,STAFF,`
                   </select>
                 </div>
               )}
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Phone</label>
+                <input
+                  type="text"
+                  className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                />
+              </div>
               
               <div className="flex items-center">
                 <input
