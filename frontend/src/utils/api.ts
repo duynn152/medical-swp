@@ -479,11 +479,15 @@ class ApiService {
     return response.json()
   }
 
-  async cancelAppointment(id: number, reason?: string): Promise<AppointmentResponse> {
+  async cancelAppointment(id: number, reason?: string, appointmentStatus?: string): Promise<AppointmentResponse> {
     const response = await fetch(`${API_BASE_URL}/appointments/${id}/cancel`, {
       method: 'PUT',
       headers: this.getAuthHeaders(),
-      body: JSON.stringify({ reason: reason || 'Cancelled by user' })
+      body: JSON.stringify({ 
+        reason: reason || 'Cancelled by user',
+        refundRequired: appointmentStatus === 'PAID', // Thông báo backend cần cam kết hoàn tiền
+        patientStatus: appointmentStatus // Gửi trạng thái appointment để backend xử lý email phù hợp
+      })
     })
 
     if (!response.ok) {
@@ -492,6 +496,60 @@ class ApiService {
     }
 
     return response.json()
+  }
+
+  // Example email content builder for cancelled appointments with refund commitment
+  // This is for backend reference - shows how email should be structured for paid appointments
+  private buildCancellationEmailContent(appointmentData: {
+    appointmentId: number
+    patientName: string
+    appointmentDate: string
+    appointmentTime: string
+    department: string
+    reason: string
+    isPaid: boolean
+    paymentAmount?: number
+  }): string {
+    const baseContent = `
+Kính chào ${appointmentData.patientName},
+
+Chúng tôi rất tiếc phải thông báo rằng lịch hẹn khám bệnh của bạn đã bị hủy.
+
+📋 THÔNG TIN LỊCH HẸN ĐÃ HỦY:
+- Mã số lịch hẹn: #${appointmentData.appointmentId}
+- Ngày khám: ${appointmentData.appointmentDate}
+- Giờ khám: ${appointmentData.appointmentTime}
+- Khoa khám: ${appointmentData.department}
+- Lý do hủy: ${appointmentData.reason}
+${appointmentData.paymentAmount ? `- Số tiền đã thanh toán: ${appointmentData.paymentAmount.toLocaleString('vi-VN')} VNĐ` : ''}
+    `.trim()
+
+    // Add refund commitment for paid appointments
+    const refundSection = appointmentData.isPaid ? `
+
+💰 CAM KẾT HOÀN TIỀN:
+Vì bạn đã thanh toán cho lịch hẹn này, chúng tôi cam kết sẽ hoàn lại toàn bộ số tiền trong vòng 3-5 ngày làm việc.
+
+🏦 QUY TRÌNH HOÀN TIỀN:
+- Thời gian xử lý: 3-5 ngày làm việc
+- Phương thức: Hoàn về tài khoản/phương thức thanh toán ban đầu
+- Liên hệ hỗ trợ: 0123-456-789 (nếu có thắc mắc về hoàn tiền)
+
+Chúng tôi sẽ liên hệ với bạn khi quá trình hoàn tiền hoàn tất.
+    ` : ''
+
+    const closingContent = `
+
+📞 LIÊN HỆ LẠI:
+Bạn có thể đặt lịch hẹn mới qua website hoặc liên hệ trực tiếp với chúng tôi.
+
+Chúng tôi xin lỗi vì sự bất tiện này và mong được phục vụ bạn trong tương lai.
+
+Trân trọng,
+Phòng khám Y tế
+    `
+
+    return baseContent + refundSection + closingContent
   }
 
   async getAppointmentsByStatus(status: string): Promise<Appointment[]> {

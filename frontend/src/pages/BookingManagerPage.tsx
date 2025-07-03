@@ -541,7 +541,7 @@ const BookingManagerPage = () => {
 
       // Handle status updates through appropriate API calls
       if (status === 'CANCELLED') {
-        await apiService.cancelAppointment(id, reason || 'Cancelled by staff')
+        await apiService.cancelAppointment(id, reason || 'Cancelled by staff', currentStatus)
       } else {
         // For other status changes, use the general update API
         await apiService.updateAppointment(id, { 
@@ -551,24 +551,6 @@ const BookingManagerPage = () => {
       
       await fetchAppointments()
       await fetchStats()
-      
-      // Auto create patient account when appointment is completed
-      if (status === 'COMPLETED' && currentAppointment.email) {
-        try {
-          const result = await createPatientAccount(currentAppointment)
-          if (result.success) {
-            toast.success(`Lịch hẹn hoàn thành. Tài khoản bệnh nhân đã được tạo tự động. Password: 123456`)
-          } else if (result.message.includes('đã tồn tại')) {
-            toast.success(`Lịch hẹn hoàn thành. Bệnh nhân đã có tài khoản`)
-          } else {
-            toast.success(`Lịch hẹn hoàn thành. Không thể tạo tài khoản: ${result.message}`)
-          }
-        } catch (error) {
-          console.error('Error auto-creating account on completion:', error)
-          toast.success('Lịch hẹn hoàn thành. Không thể tạo tài khoản tự động')
-        }
-        return // Exit early since we already showed a message
-      }
       
       const statusLabelsMap = {
         'PENDING': 'chờ xác nhận',
@@ -864,12 +846,55 @@ const BookingManagerPage = () => {
     setBulkCancelling(true)
     let successCount = 0
     let errorCount = 0
+    let skippedCount = 0
+    const errors: string[] = []
 
     try {
-      const cancelPromises = Array.from(selectedAppointments).map(async (id) => {
+      const selectedIds = Array.from(selectedAppointments)
+      
+      // Filter out appointments that cannot be cancelled
+      const validAppointments: number[] = []
+      
+      for (const id of selectedIds) {
+        const appointment = appointments.find(apt => apt.id === id)
+        if (!appointment) {
+          errorCount++
+          errors.push(`Lịch hẹn #${id}: Không tìm thấy`)
+          continue
+        }
+
+        // Check if appointment is in final status or payment stage - prevent cancellation
+        if (appointment.status === 'COMPLETED') {
+          skippedCount++
+          errors.push(`Lịch hẹn #${id}: Không thể hủy lịch hẹn đã hoàn thành`)
+          continue
+        }
+
+        // Cannot cancel if already cancelled or no-show
+        if (appointment.status === 'CANCELLED' || appointment.status === 'NO_SHOW') {
+          skippedCount++
+          errors.push(`Lịch hẹn #${id}: Lịch hẹn đã có trạng thái ${statusLabels[appointment.status]}`)
+          continue
+        }
+
+        // Cannot cancel if payment is involved (service commitment made)
+        if (appointment.status === 'NEEDS_PAYMENT' || appointment.status === 'PAYMENT_REQUESTED' || appointment.status === 'PAID') {
+          skippedCount++
+          errors.push(`Lịch hẹn #${id}: Không thể hủy lịch hẹn đã có yêu cầu thanh toán`)
+          continue
+        }
+
+        validAppointments.push(id)
+      }
+
+      const cancelPromises = validAppointments.map(async (id) => {
         try {
-          // Cancel appointment with reason via the API
-          await apiService.cancelAppointment(id, cancellationReason.trim())
+          // Get appointment status to determine if refund is needed
+          const appointment = appointments.find(apt => apt.id === id)
+          const appointmentStatus = appointment?.status
+          
+          // Cancel appointment with reason via the API, include status for refund logic
+          await apiService.cancelAppointment(id, cancellationReason.trim(), appointmentStatus)
           successCount++
           return id
         } catch (error) {
@@ -889,11 +914,24 @@ const BookingManagerPage = () => {
       setShowBulkCancelConfirm(false)
       setCancellationReason('')
       
+      // Check if any cancelled appointments were paid (for refund notification)
+      const paidAppointmentsCancelled = validAppointments.filter(id => {
+        const appointment = appointments.find(apt => apt.id === id)
+        return appointment?.status === 'PAID'
+      }).length
+      
       if (successCount > 0) {
-        toast.success(`Đã hủy thành công ${successCount} lịch hẹn và gửi email thông báo`)
+        if (paidAppointmentsCancelled > 0) {
+          toast.success(`Đã hủy thành công ${successCount} lịch hẹn và gửi email thông báo. ${paidAppointmentsCancelled} lịch hẹn đã thanh toán sẽ được hoàn tiền.`)
+        } else {
+          toast.success(`Đã hủy thành công ${successCount} lịch hẹn và gửi email thông báo`)
+        }
+      }
+      if (skippedCount > 0) {
+        toast.success(`Đã bỏ qua ${skippedCount} lịch hẹn không thể hủy`)
       }
       if (errorCount > 0) {
-        toast.error(`Có ${errorCount} lịch hẹn không thể hủy`)
+        toast.error(`Có ${errorCount} lịch hẹn không thể hủy. Chi tiết: ${errors.join(', ')}`)
       }
     } catch (error) {
       console.error('Error bulk cancelling appointments:', error)
@@ -1181,6 +1219,24 @@ const BookingManagerPage = () => {
     })
   }
 
+  // Check if any selected appointments have invalid statuses for cancellation (to disable cancel button)
+  const hasSelectedInvalidCancellationStatusAppointments = () => {
+    const selectedIds = Array.from(selectedAppointments)
+    return selectedIds.some(id => {
+      const appointment = appointments.find(apt => apt.id === id)
+      return appointment && (
+        // Final statuses - cannot be cancelled
+        appointment.status === 'COMPLETED' || 
+        appointment.status === 'CANCELLED' || 
+        appointment.status === 'NO_SHOW' ||
+        // Payment stages - cannot be cancelled (service commitment made)
+        appointment.status === 'NEEDS_PAYMENT' ||
+        appointment.status === 'PAYMENT_REQUESTED' ||
+        appointment.status === 'PAID'
+      )
+    })
+  }
+
   // Helper function to handle status changes with confirmation
   const handleStatusChangeWithConfirmation = async (
     appointmentId: number, 
@@ -1439,7 +1495,13 @@ const BookingManagerPage = () => {
                 </button>
                 <button
                   onClick={handleBulkCancel}
-                  className="flex items-center px-3 py-1 bg-orange-600 text-white rounded-md hover:bg-orange-700 text-sm"
+                  disabled={hasSelectedInvalidCancellationStatusAppointments()}
+                  className={`flex items-center px-3 py-1 rounded-md text-sm ${
+                    hasSelectedInvalidCancellationStatusAppointments()
+                      ? 'bg-gray-400 text-gray-700 cursor-not-allowed opacity-50'
+                      : 'bg-orange-600 text-white hover:bg-orange-700'
+                  }`}
+                  title={hasSelectedInvalidCancellationStatusAppointments() ? 'Không thể hủy lịch hẹn đã hoàn thành, đã hủy, không đến hoặc đã có yêu cầu thanh toán' : 'Hủy các lịch hẹn đã chọn'}
                 >
                   <X className="w-4 h-4 mr-1" />
                   Cancel

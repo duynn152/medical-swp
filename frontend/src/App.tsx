@@ -13,6 +13,7 @@ import HomePage from './pages/HomePage'
 import UsersPage from './pages/UsersPage'
 import BlogControlPage from './pages/BlogControlPage'
 import BookingManagerPage from './pages/BookingManagerPage'
+import BookingHistoryPage from './pages/BookingHistoryPage'
 import PatientControlPage from './pages/PatientControlPage'
 import PendingApprovalsPage from './pages/PendingApprovalsPage'
 import LoginPage from './pages/LoginPage'
@@ -58,6 +59,7 @@ function App() {
         <Route path="users" element={<UsersPage />} />
         <Route path="blogs" element={<BlogControlPage />} />
         <Route path="bookings" element={<BookingManagerPage />} />
+        <Route path="booking-history" element={<BookingHistoryPage />} />
         <Route path="patients" element={<PatientControlPage />} />
         <Route path="pending-approvals" element={<PendingApprovalsPage />} />
       </Route>

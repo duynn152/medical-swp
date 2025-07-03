@@ -1359,8 +1359,6 @@ public class AppointmentController {
                 return ResponseEntity.notFound().build();
             }
             
-            Appointment appointment = appointmentOpt.get();
-            
             // Build email content
             String emailContent = buildUpdateEmailContent(
                 request.getPatientName(),

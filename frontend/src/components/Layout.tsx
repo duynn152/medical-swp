@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
-import { Users, Home, Menu, X, LogOut, User, BookOpen, Calendar, UserCheck, Clock } from 'lucide-react'
+import { Users, Home, Menu, X, LogOut, User, BookOpen, Calendar, UserCheck, Clock, FileText } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { getStoredUserInfo, clearAuth, isAuthenticated } from '../utils/api'
 
@@ -59,6 +59,12 @@ const Layout = () => {
       href: '/admin/bookings', 
       icon: Calendar,
       allowedRoles: ['ADMIN', 'STAFF'] // Admin and staff can manage bookings
+    },
+    { 
+      name: 'Booking History', 
+      href: '/admin/booking-history', 
+      icon: FileText,
+      allowedRoles: ['ADMIN', 'STAFF'] // Admin and staff can view booking history
     },
   ]
 
