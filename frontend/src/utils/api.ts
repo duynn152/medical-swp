@@ -75,7 +75,7 @@ export interface Appointment {
   appointmentTime: string
   department: string
   reason?: string
-  status: 'PENDING' | 'AWAITING_DOCTOR_APPROVAL' | 'CONFIRMED' | 'PAYMENT_REQUESTED' | 'PAID' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
+  status: 'PENDING' | 'AWAITING_DOCTOR_APPROVAL' | 'CONFIRMED' | 'NEEDS_PAYMENT' | 'PAYMENT_REQUESTED' | 'PAID' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
   emailSent: boolean
   reminderSent: boolean
   paymentRequested: boolean
@@ -578,6 +578,22 @@ class ApiService {
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.error || 'Failed to request payment')
+    }
+
+    return response.json()
+  }
+
+  // Mark appointment as paid - calls handlePayment endpoint with automatic NEEDS_PAYMENT → COMPLETED transition
+  async markAppointmentAsPaid(id: number): Promise<AppointmentResponse> {
+    const response = await fetch(`${API_BASE_URL}/appointments/${id}/handle-payment`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ status: 'PAID' })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to mark appointment as paid')
     }
 
     return response.json()

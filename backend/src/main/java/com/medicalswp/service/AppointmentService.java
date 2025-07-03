@@ -77,6 +77,22 @@ public class AppointmentService {
         
         Appointment appointment = appointmentOptional.get();
         
+        // Validate business rules for status changes
+        if (appointmentDetails.getStatus() != null) {
+            Appointment.AppointmentStatus currentStatus = appointment.getStatus();
+            Appointment.AppointmentStatus newStatus = appointmentDetails.getStatus();
+            
+            // Enforce workflow: Can mark as COMPLETED if:
+            // 1. Currently PAID (normal flow: payment -> doctor completes)
+            // 2. Currently NEEDS_PAYMENT (doctor completed first, then payment completes the appointment)
+            if (newStatus == Appointment.AppointmentStatus.COMPLETED && 
+                currentStatus != Appointment.AppointmentStatus.PAID && 
+                currentStatus != Appointment.AppointmentStatus.NEEDS_PAYMENT) {
+                throw new IllegalArgumentException("Cannot mark appointment as COMPLETED unless it is currently PAID or NEEDS_PAYMENT. Current status: " + currentStatus);
+            }
+            // All other status transitions are allowed (including setting NEEDS_PAYMENT)
+        }
+        
         // Update fields only if they are not null (partial update support)
         if (appointmentDetails.getFullName() != null) {
             appointment.setFullName(appointmentDetails.getFullName());
@@ -384,10 +400,19 @@ public class AppointmentService {
         
         Appointment appointment = appointmentOptional.get();
         
-        // Validate appointment status
+        // Validate appointment status - prevent payment requests for final statuses
+        if (appointment.getStatus() == Appointment.AppointmentStatus.COMPLETED ||
+            appointment.getStatus() == Appointment.AppointmentStatus.CANCELLED ||
+            appointment.getStatus() == Appointment.AppointmentStatus.NO_SHOW) {
+            throw new IllegalArgumentException("Cannot request payment for appointments with status: " + appointment.getStatus() + 
+                ". Payment requests are not allowed for completed, cancelled, or no-show appointments.");
+        }
+        
+        // Validate appointment status - allow payment requests for CONFIRMED, NEEDS_PAYMENT, or already PAYMENT_REQUESTED
         if (appointment.getStatus() != Appointment.AppointmentStatus.CONFIRMED && 
+            appointment.getStatus() != Appointment.AppointmentStatus.NEEDS_PAYMENT &&
             appointment.getStatus() != Appointment.AppointmentStatus.PAYMENT_REQUESTED) {
-            throw new IllegalArgumentException("Only confirmed appointments can request payment");
+            throw new IllegalArgumentException("Payment can only be requested for confirmed appointments or those needing payment");
         }
         
         // Validate amount

@@ -13,7 +13,7 @@ interface Appointment {
   appointmentTime: string
   department: string
   reason?: string
-  status: 'PENDING' | 'AWAITING_DOCTOR_APPROVAL' | 'CONFIRMED' | 'PAYMENT_REQUESTED' | 'PAID' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
+  status: 'PENDING' | 'AWAITING_DOCTOR_APPROVAL' | 'CONFIRMED' | 'NEEDS_PAYMENT' | 'PAYMENT_REQUESTED' | 'PAID' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW'
   notes?: string
   emailSent: boolean
   reminderSent: boolean
@@ -325,6 +325,7 @@ const BookingManagerPage = () => {
     PENDING: 'bg-yellow-100 text-yellow-800',
     AWAITING_DOCTOR_APPROVAL: 'bg-purple-100 text-purple-800',
     CONFIRMED: 'bg-blue-100 text-blue-800',
+    NEEDS_PAYMENT: 'bg-green-100 text-green-800',
     PAYMENT_REQUESTED: 'bg-orange-100 text-orange-800',
     PAID: 'bg-purple-100 text-purple-800',
     COMPLETED: 'bg-green-100 text-green-800',
@@ -336,6 +337,7 @@ const BookingManagerPage = () => {
     PENDING: AlertCircle,
     AWAITING_DOCTOR_APPROVAL: Clock,
     CONFIRMED: CheckCircle,
+    NEEDS_PAYMENT: UserCheck,
     PAYMENT_REQUESTED: TrendingUp,
     PAID: Check,
     COMPLETED: Check,
@@ -347,7 +349,8 @@ const BookingManagerPage = () => {
     PENDING: 'Chờ xác nhận',
     AWAITING_DOCTOR_APPROVAL: 'Chờ bác sĩ phản hồi',
     CONFIRMED: 'Đã xác nhận',
-    PAYMENT_REQUESTED: 'Yêu cầu thanh toán',
+    NEEDS_PAYMENT: 'Cần thanh toán',
+    PAYMENT_REQUESTED: 'Cần thanh toán',
     PAID: 'Đã thanh toán',
     COMPLETED: 'Đã hoàn thành',
     CANCELLED: 'Đã hủy',
@@ -518,8 +521,21 @@ const BookingManagerPage = () => {
         return
       }
 
-      if (status === 'COMPLETED' && currentStatus !== 'PAID') {
-        toast.error('Chỉ có thể hoàn thành lịch hẹn sau khi đã thanh toán')
+      // Prevent marking as paid when appointment is in final status
+      if (status === 'PAID' && (currentStatus === 'COMPLETED' || currentStatus === 'CANCELLED' || currentStatus === 'NO_SHOW')) {
+        toast.error(`Không thể đánh dấu thanh toán cho lịch hẹn có trạng thái: ${statusLabels[currentStatus]}`)
+        return
+      }
+
+      // Can only mark as COMPLETED if currently PAID or NEEDS_PAYMENT
+      if (status === 'COMPLETED' && currentStatus !== 'PAID' && currentStatus !== 'NEEDS_PAYMENT') {
+        toast.error('Chỉ có thể hoàn thành lịch hẹn sau khi bệnh nhân đã thanh toán hoặc cần thanh toán')
+        return
+      }
+
+      // Prevent marking as completed when appointment is in final status (keeping for safety)
+      if (status === 'COMPLETED' && (currentStatus === 'COMPLETED' || currentStatus === 'CANCELLED' || currentStatus === 'NO_SHOW')) {
+        toast.error(`Không thể thay đổi trạng thái cho lịch hẹn có trạng thái: ${statusLabels[currentStatus]}`)
         return
       }
 
@@ -558,7 +574,8 @@ const BookingManagerPage = () => {
         'PENDING': 'chờ xác nhận',
         'AWAITING_DOCTOR_APPROVAL': 'chờ bác sĩ phản hồi',
         'CONFIRMED': 'xác nhận',
-        'PAYMENT_REQUESTED': 'yêu cầu thanh toán',
+        'NEEDS_PAYMENT': 'cần thanh toán',
+        'PAYMENT_REQUESTED': 'cần thanh toán',
         'PAID': 'đã thanh toán',
         'COMPLETED': 'hoàn thành',
         'CANCELLED': 'hủy',
@@ -573,6 +590,12 @@ const BookingManagerPage = () => {
   }
 
   const handleRequestPayment = async (appointment: Appointment) => {
+    // Check if appointment is in final status - prevent payment requests
+    if (appointment.status === 'COMPLETED' || appointment.status === 'CANCELLED' || appointment.status === 'NO_SHOW') {
+      toast.error(`Không thể yêu cầu thanh toán cho lịch hẹn có trạng thái: ${statusLabels[appointment.status]}`)
+      return
+    }
+
     setSelectedAppointmentForPayment(appointment)
     setPaymentAmount('')
     setShowPaymentModal(true)
@@ -898,16 +921,41 @@ const BookingManagerPage = () => {
     let errorCount = 0
     let emailSuccessCount = 0
     let emailErrorCount = 0
+    let skippedCount = 0
+    const errors: string[] = []
 
     try {
       const selectedIds = Array.from(selectedAppointments)
       console.log('🔍 DEBUG: selectedIds:', selectedIds)
       
-      // First, mark appointments as paid
-      const paidPromises = selectedIds.map(async (id) => {
+      // First, validate and mark appointments as paid
+      const validAppointments: number[] = []
+      
+      for (const id of selectedIds) {
+        const appointment = appointments.find(apt => apt.id === id)
+        if (!appointment) {
+          errorCount++
+          errors.push(`Lịch hẹn #${id}: Không tìm thấy`)
+          continue
+        }
+
+        // Check if appointment is in final status - prevent marking as paid
+        if (appointment.status === 'COMPLETED' || appointment.status === 'CANCELLED' || appointment.status === 'NO_SHOW') {
+          skippedCount++
+          errors.push(`Lịch hẹn #${id}: Không thể đánh dấu thanh toán cho trạng thái ${statusLabels[appointment.status]}`)
+          continue
+        }
+
+        validAppointments.push(id)
+      }
+
+      console.log('🔍 DEBUG: validAppointments:', validAppointments)
+      
+      // Process valid appointments
+      const paidPromises = validAppointments.map(async (id) => {
         console.log('🔍 DEBUG: Processing appointment ID:', id)
         try {
-          await apiService.updateAppointment(id, { status: 'PAID' })
+          await apiService.markAppointmentAsPaid(id)
           successCount++
           console.log('✅ Successfully updated appointment', id, 'to PAID')
           return id
@@ -923,7 +971,7 @@ const BookingManagerPage = () => {
       console.log('🔍 DEBUG: Update results:', results)
       
       // Then, send email notifications for successfully updated appointments
-      const successfulIds = selectedIds.filter((id, index) => {
+      const successfulIds = validAppointments.filter((id, index) => {
         const result = results[index]
         const isSuccess = result.status === 'fulfilled'
         console.log('🔍 DEBUG: Appointment', id, 'update success:', isSuccess)
@@ -931,7 +979,7 @@ const BookingManagerPage = () => {
       })
 
       console.log('🔍 DEBUG: successfulIds after filtering:', successfulIds)
-      console.log('🔍 DEBUG: successCount:', successCount, 'errorCount:', errorCount)
+      console.log('🔍 DEBUG: successCount:', successCount, 'errorCount:', errorCount, 'skippedCount:', skippedCount)
 
       if (successfulIds.length > 0) {
         // Send email notifications
@@ -993,12 +1041,16 @@ const BookingManagerPage = () => {
         }
       }
       
+      if (skippedCount > 0) {
+        toast.success(`Đã bỏ qua ${skippedCount} lịch hẹn không thể đánh dấu thanh toán`)
+      }
+      
       if (emailErrorCount > 0) {
         toast.success(`Lưu ý: ${emailErrorCount} email thông báo không thể gửi, nhưng trạng thái đã được cập nhật`)
       }
       
       if (errorCount > 0) {
-        toast.error(`Có ${errorCount} lịch hẹn không thể đánh dấu`)
+        toast.error(`Có ${errorCount} lịch hẹn không thể đánh dấu. Chi tiết: ${errors.join(', ')}`)
       }
     } catch (error) {
       console.error('Error bulk marking appointments as paid:', error)
@@ -1111,6 +1163,24 @@ const BookingManagerPage = () => {
     setSelectAll(false)
   }, [filteredAppointments])
 
+  // Check if any selected appointments have invalid statuses for payment actions (to disable payment buttons)
+  const hasSelectedInvalidPaymentStatusAppointments = () => {
+    const selectedIds = Array.from(selectedAppointments)
+    return selectedIds.some(id => {
+      const appointment = appointments.find(apt => apt.id === id)
+      return appointment && (
+        // Final statuses - no payment actions allowed
+        appointment.status === 'COMPLETED' || 
+        appointment.status === 'CANCELLED' || 
+        appointment.status === 'NO_SHOW' ||
+        // Pre-confirmation statuses - payment not ready yet
+        appointment.status === 'PENDING' ||
+        appointment.status === 'AWAITING_DOCTOR_APPROVAL'
+        // CONFIRMED and NEEDS_PAYMENT are allowed for payment actions
+      )
+    })
+  }
+
   // Helper function to handle status changes with confirmation
   const handleStatusChangeWithConfirmation = async (
     appointmentId: number, 
@@ -1157,8 +1227,15 @@ const BookingManagerPage = () => {
             continue
           }
 
-          // Check if appointment is in CONFIRMED status
-          if (appointment.status !== 'CONFIRMED') {
+          // Check if appointment is in final status - prevent payment requests
+          if (appointment.status === 'COMPLETED' || appointment.status === 'CANCELLED' || appointment.status === 'NO_SHOW') {
+            failedCount++
+            errors.push(`Lịch hẹn #${appointmentId}: Không thể yêu cầu thanh toán cho trạng thái ${statusLabels[appointment.status]}`)
+            continue
+          }
+
+          // Check if appointment is in CONFIRMED or NEEDS_PAYMENT status
+          if (appointment.status !== 'CONFIRMED' && appointment.status !== 'NEEDS_PAYMENT') {
             failedCount++
             errors.push(`Lịch hẹn #${appointmentId}: Trạng thái không hợp lệ (${statusLabels[appointment.status]})`)
             continue
@@ -1305,7 +1382,8 @@ const BookingManagerPage = () => {
                 <option value="">Tất cả trạng thái</option>
                 <option value="PENDING">Chờ xác nhận</option>
                 <option value="CONFIRMED">Đã xác nhận</option>
-                <option value="PAYMENT_REQUESTED">Yêu cầu thanh toán</option>
+                <option value="NEEDS_PAYMENT">Cần thanh toán</option>
+                <option value="PAYMENT_REQUESTED">Cần thanh toán</option>
                 <option value="PAID">Đã thanh toán</option>
                 <option value="COMPLETED">Hoàn thành</option>
                 <option value="CANCELLED">Đã hủy</option>
@@ -1335,14 +1413,26 @@ const BookingManagerPage = () => {
               <div className="flex items-center space-x-2">
                 <button
                   onClick={handleBulkRequestPayment}
-                  className="flex items-center px-3 py-1 bg-teal-600 text-white rounded-md hover:bg-teal-700 text-sm"
+                  disabled={hasSelectedInvalidPaymentStatusAppointments()}
+                  className={`flex items-center px-3 py-1 rounded-md text-sm ${
+                    hasSelectedInvalidPaymentStatusAppointments()
+                      ? 'bg-gray-400 text-gray-700 cursor-not-allowed opacity-50'
+                      : 'bg-teal-600 text-white hover:bg-teal-700'
+                  }`}
+                  title={hasSelectedInvalidPaymentStatusAppointments() ? 'Không thể yêu cầu thanh toán cho lịch hẹn chưa được xác nhận hoặc đã hoàn thành' : 'Yêu cầu thanh toán cho các lịch hẹn đã chọn'}
                 >
                   <TrendingUp className="w-4 h-4 mr-1" />
                   Request Payment
                 </button>
                 <button
                   onClick={handleBulkPaid}
-                  className="flex items-center px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm"
+                  disabled={hasSelectedInvalidPaymentStatusAppointments()}
+                  className={`flex items-center px-3 py-1 rounded-md text-sm ${
+                    hasSelectedInvalidPaymentStatusAppointments()
+                      ? 'bg-gray-400 text-gray-700 cursor-not-allowed opacity-50'
+                      : 'bg-purple-600 text-white hover:bg-purple-700'
+                  }`}
+                  title={hasSelectedInvalidPaymentStatusAppointments() ? 'Không thể đánh dấu thanh toán cho lịch hẹn chưa được xác nhận hoặc đã hoàn thành' : 'Đánh dấu đã thanh toán cho các lịch hẹn đã chọn'}
                 >
                   <Check className="w-4 h-4 mr-1" />
                   Mark Paid
@@ -1533,16 +1623,7 @@ const BookingManagerPage = () => {
                             Assign Doctor
                           </button>
                         )}
-                        
-                        {/* Show Confirm button for AWAITING_DOCTOR_APPROVAL - specific workflow step */}
-                        {appointment.status === 'AWAITING_DOCTOR_APPROVAL' && (
-                          <button
-                            onClick={() => handleStatusChangeWithConfirmation(appointment.id, 'CONFIRMED')}
-                            className="px-3 py-1 border border-green-300 rounded-md text-sm font-medium text-green-600 bg-white hover:bg-green-50 hover:border-green-400"
-                          >
-                            Confirm
-                          </button>
-                        )}
+
 
 
                       </div>
@@ -2282,7 +2363,7 @@ const BookingManagerPage = () => {
                   Bạn có chắc chắn muốn đánh dấu <strong>{selectedAppointments.size}</strong> lịch hẹn đã chọn là <strong>đã thanh toán</strong>?
                 </p>
                 <p className="text-xs text-gray-500">
-                  Trạng thái các lịch hẹn sẽ được chuyển thành "Đã thanh toán".
+                  Trạng thái các lịch hẹn sẽ được chuyển thành "Đã thanh toán". Bác sĩ sẽ khám bệnh và hoàn thành lịch hẹn.
                 </p>
               </div>
               

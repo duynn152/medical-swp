@@ -311,6 +311,7 @@ public class Appointment {
         PENDING,                    // User đặt lịch, chờ staff xem xét
         AWAITING_DOCTOR_APPROVAL,   // Staff đã assign doctor, chờ doctor phản hồi
         CONFIRMED,                  // Doctor đã accept, lịch hẹn được confirm
+        NEEDS_PAYMENT,              // Doctor đã hoàn thành khám, cần thanh toán
         PAYMENT_REQUESTED,          // Staff yêu cầu thanh toán
         PAID,                       // Patient đã thanh toán
         COMPLETED,                  // Đã hoàn thành khám

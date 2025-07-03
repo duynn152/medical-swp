@@ -640,54 +640,80 @@ public class AppointmentController {
             
             Appointment appointment = appointmentOpt.get();
             
+            // Validate appointment status - prevent marking as paid for final statuses
+            if (appointment.getStatus() == Appointment.AppointmentStatus.COMPLETED ||
+                appointment.getStatus() == Appointment.AppointmentStatus.CANCELLED ||
+                appointment.getStatus() == Appointment.AppointmentStatus.NO_SHOW) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Cannot mark payment as paid for appointments with status: " + appointment.getStatus() + 
+                    ". Payment updates are not allowed for completed, cancelled, or no-show appointments.");
+                return ResponseEntity.badRequest().body(error);
+            }
+            
             Map<String, Object> response = new HashMap<>();
             
-            // If payment is successful, create patient account
-            if ("PAID".equalsIgnoreCase(paymentStatus)) {
-                String email = appointment.getEmail();
-                
-                if (email != null && !email.trim().isEmpty()) {
-                    // Check if user already exists
-                    if (!userRepository.existsByEmail(email)) {
-                        try {
-                            // Create new patient account
-                            User newPatient = new User();
-                            newPatient.setUsername(email);
-                            newPatient.setEmail(email);
-                            newPatient.setFullName(appointment.getFullName());
-                            newPatient.setPassword(passwordEncoder.encode("123456"));
-                            newPatient.setRole(User.Role.PATIENT);
-                            newPatient.setActive(true);
-                            
-                            User savedPatient = userRepository.save(newPatient);
-                            
-                            response.put("patientAccountCreated", true);
-                            response.put("patientAccount", Map.of(
-                                "username", savedPatient.getUsername(),
-                                "temporaryPassword", "123456",
-                                "message", "Tài khoản bệnh nhân đã được tạo thành công"
-                            ));
-                            
-                            logger.info("=== Patient account created for email: {} ===", email);
-                        } catch (Exception e) {
-                            logger.error("Error creating patient account for email: {}", email, e);
-                            response.put("patientAccountCreated", false);
-                            response.put("patientAccountError", "Có lỗi khi tạo tài khoản bệnh nhân: " + e.getMessage());
-                        }
-                    } else {
+            // Debug log - check notes value
+            logger.info("=== DEBUG: Payment processing for appointment {} ===", id);
+            logger.info("=== DEBUG: Appointment notes: '{}' ===", appointment.getNotes());
+            logger.info("=== DEBUG: Notes is null: {} ===", appointment.getNotes() == null);
+            logger.info("=== DEBUG: Notes is empty: {} ===", appointment.getNotes() != null && appointment.getNotes().trim().isEmpty());
+            
+            // Update appointment status based on whether doctor has completed examination
+            if ((appointment.getNotes() != null && !appointment.getNotes().trim().isEmpty()) || 
+                appointment.getStatus() == Appointment.AppointmentStatus.NEEDS_PAYMENT) {
+                // Doctor has completed examination (has notes OR status is NEEDS_PAYMENT), mark as COMPLETED
+                logger.info("=== DEBUG: Doctor has completed examination, marking as COMPLETED ===");
+                appointment.setStatus(Appointment.AppointmentStatus.COMPLETED);
+                appointment.setPaymentCompleted(true);
+                appointment.setPaymentCompletedAt(java.time.LocalDateTime.now());
+                appointment = appointmentRepository.save(appointment);
+                response.put("message", "Thanh toán thành công! Lịch hẹn đã được hoàn thành.");
+            } else {
+                // Doctor hasn't completed examination yet, mark as PAID and wait for doctor
+                logger.info("=== DEBUG: Doctor hasn't completed examination yet, marking as PAID ===");
+                appointment.setStatus(Appointment.AppointmentStatus.PAID);
+                appointment.setPaymentCompleted(true);
+                appointment.setPaymentCompletedAt(java.time.LocalDateTime.now());
+                appointment = appointmentRepository.save(appointment);
+                response.put("message", "Thanh toán thành công! Chờ bác sĩ hoàn thành khám bệnh.");
+            }
+            
+            // Auto create patient account if email is provided and account doesn't exist
+            String email = appointment.getEmail();
+            if (email != null && !email.trim().isEmpty()) {
+                if (!userRepository.existsByEmail(email)) {
+                    try {
+                        // Create new patient account
+                        User newPatient = new User();
+                        newPatient.setUsername(email);
+                        newPatient.setEmail(email);
+                        newPatient.setFullName(appointment.getFullName());
+                        newPatient.setPassword(passwordEncoder.encode("123456"));
+                        newPatient.setRole(User.Role.PATIENT);
+                        newPatient.setActive(true);
+                        
+                        User savedPatient = userRepository.save(newPatient);
+                        
+                        response.put("patientAccountCreated", true);
+                        response.put("patientAccount", Map.of(
+                            "username", savedPatient.getUsername(),
+                            "temporaryPassword", "123456",
+                            "message", "Tài khoản bệnh nhân đã được tạo thành công"
+                        ));
+                        
+                        logger.info("=== Patient account created for email: {} ===", email);
+                    } catch (Exception e) {
+                        logger.error("Error creating patient account for email: {}", email, e);
                         response.put("patientAccountCreated", false);
-                        response.put("patientAccountMessage", "Tài khoản với email này đã tồn tại");
+                        response.put("patientAccountError", "Có lỗi khi tạo tài khoản bệnh nhân: " + e.getMessage());
                     }
                 } else {
                     response.put("patientAccountCreated", false);
-                    response.put("patientAccountMessage", "Không có email để tạo tài khoản");
+                    response.put("patientAccountMessage", "Tài khoản với email này đã tồn tại");
                 }
-                
-                // Update appointment status to CONFIRMED after successful payment
-                appointment = appointmentService.confirmAppointment(id);
-                response.put("message", "Thanh toán thành công và lịch hẹn đã được xác nhận");
             } else {
-                response.put("message", "Payment status updated: " + paymentStatus);
+                response.put("patientAccountCreated", false);
+                response.put("patientAccountMessage", "Không có email để tạo tài khoản");
             }
             
             response.put("appointment", appointment);
@@ -722,6 +748,17 @@ public class AppointmentController {
             }
             
             Appointment appointment = appointmentOpt.get();
+            
+            // Validate appointment status - prevent payment completion for final statuses
+            if (appointment.getStatus() == Appointment.AppointmentStatus.COMPLETED ||
+                appointment.getStatus() == Appointment.AppointmentStatus.CANCELLED ||
+                appointment.getStatus() == Appointment.AppointmentStatus.NO_SHOW) {
+                Map<String, String> error = new HashMap<>();
+                error.put("error", "Cannot complete payment for appointments with status: " + appointment.getStatus() + 
+                    ". Payment completion is not allowed for completed, cancelled, or no-show appointments.");
+                return ResponseEntity.badRequest().body(error);
+            }
+            
             String email = appointment.getEmail();
             
             Map<String, Object> response = new HashMap<>();
@@ -965,12 +1002,13 @@ public class AppointmentController {
             Appointment confirmedAppointment = appointmentRepository.save(appointment);
             
             Map<String, Object> responseMap = new HashMap<>();
-            responseMap.put("message", "Lịch hẹn đã được chấp nhận");
+            responseMap.put("message", "Lịch hẹn đã được chấp nhận thành công");
             responseMap.put("appointment", confirmedAppointment);
             
             logger.info("Doctor {} accepted appointment {}", doctorUsername, id);
             
             return ResponseEntity.ok(responseMap);
+            
         } catch (Exception e) {
             logger.error("Error accepting appointment: {}", id, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();

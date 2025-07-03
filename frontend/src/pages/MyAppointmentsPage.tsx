@@ -81,7 +81,7 @@ const MyAppointmentsPage: React.FC = () => {
       case 'AWAITING_DOCTOR_APPROVAL':
         return 'Chờ bác sĩ phê duyệt'
       case 'PAYMENT_REQUESTED':
-        return 'Yêu cầu thanh toán'
+        return 'Cần thanh toán'
       case 'PAID':
         return 'Đã thanh toán'
       case 'COMPLETED':

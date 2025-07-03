@@ -63,9 +63,9 @@ const PatientControlPage = () => {
         ? await apiService.getMyPatientsAppointments()  // Doctor: only their patients
         : await apiService.getAllAppointments()         // Admin/Staff: all appointments
       
-      // Filter confirmed appointments (include PAYMENT_REQUESTED and PAID as they are also confirmed patients)
+      // Filter confirmed appointments (include PAYMENT_REQUESTED, PAID, and NEEDS_PAYMENT as they are confirmed patients)
       const confirmedAppointments = allAppointments.filter(apt => 
-        apt.status === 'CONFIRMED' || apt.status === 'PAYMENT_REQUESTED' || apt.status === 'PAID'
+        apt.status === 'CONFIRMED' || apt.status === 'NEEDS_PAYMENT' || apt.status === 'PAYMENT_REQUESTED' || apt.status === 'PAID'
       )
       
       // Group appointments by patient (email as unique identifier)
@@ -78,8 +78,8 @@ const PatientControlPage = () => {
         if (existingPatient) {
           existingPatient.appointments.push(appointment)
           existingPatient.totalAppointments += 1
-          // Count both CONFIRMED, PAYMENT_REQUESTED and PAID as confirmed
-          if (appointment.status === 'CONFIRMED' || appointment.status === 'PAYMENT_REQUESTED' || appointment.status === 'PAID') {
+          // Count CONFIRMED, NEEDS_PAYMENT, PAYMENT_REQUESTED and PAID as confirmed
+          if (appointment.status === 'CONFIRMED' || appointment.status === 'NEEDS_PAYMENT' || appointment.status === 'PAYMENT_REQUESTED' || appointment.status === 'PAID') {
             existingPatient.confirmedAppointments += 1
           }
           
@@ -203,10 +203,32 @@ const PatientControlPage = () => {
     try {
       setSavingNotes(true)
       
-      // Update both notes and status
+      // Determine final status based on current payment status and doctor's selection
+      const currentStatus = selectedAppointmentForNotes.status
+      let finalStatus: 'COMPLETED' | 'NO_SHOW' | 'NEEDS_PAYMENT' = appointmentStatus
+      let statusMessage = ''
+      
+      if (appointmentStatus === 'COMPLETED') {
+        // Auto-check payment status - doctor doesn't need to choose NEEDS_PAYMENT manually
+        if (selectedAppointmentForNotes.paymentCompleted) {
+          // Patient has already paid, can complete immediately
+          finalStatus = 'COMPLETED'
+          statusMessage = 'Ghi chú đã được lưu và lịch hẹn đã hoàn thành.'
+        } else {
+          // Patient hasn't paid yet, automatically set to NEEDS_PAYMENT
+          finalStatus = 'NEEDS_PAYMENT'
+          statusMessage = 'Ghi chú đã được lưu. Lịch hẹn chuyển sang trạng thái "Cần thanh toán" - bệnh nhân cần thanh toán để hoàn thành.'
+        }
+      } else {
+        // NO_SHOW status
+        finalStatus = appointmentStatus
+        statusMessage = 'Ghi chú đã được lưu và lịch hẹn đã được đánh dấu không đến.'
+      }
+      
+      // Update notes and status
       await apiService.updateAppointment(selectedAppointmentForNotes.id, {
         notes: doctorNotes,
-        status: appointmentStatus
+        status: finalStatus
       })
       
       // Create follow-up appointment if checkbox is checked
@@ -253,6 +275,9 @@ const PatientControlPage = () => {
         reason: 'Tái khám theo yêu cầu của bác sĩ'
       })
       setError('') // Clear any previous errors
+      
+      // Show appropriate success message
+      alert(statusMessage)
     } catch (error: any) {
       console.error('Error saving notes:', error)
       setError(error.message || 'Failed to save notes')
@@ -296,8 +321,8 @@ const PatientControlPage = () => {
           <h1 className="text-2xl font-semibold text-gray-900">Patient Control</h1>
           <p className="text-gray-600">
             {getStoredUserInfo()?.role === 'DOCTOR' 
-              ? 'Manage your assigned patients with confirmed appointments, payment requests, and completed payments'
-              : 'Manage patients with confirmed appointments, payment requests, and completed payments'
+              ? 'Manage your assigned patients with confirmed appointments, needs payment, payment requests, and completed payments'
+              : 'Manage patients with confirmed appointments, needs payment, payment requests, and completed payments'
             }
           </p>
         </div>
@@ -586,9 +611,12 @@ const PatientControlPage = () => {
                     value={appointmentStatus}
                     onChange={(e) => setAppointmentStatus(e.target.value as 'COMPLETED' | 'NO_SHOW')}
                   >
-                    <option value="COMPLETED">Completed</option>
-                    <option value="NO_SHOW">No Show</option>
+                    <option value="COMPLETED">Đã khám (hệ thống sẽ tự động kiểm tra thanh toán)</option>
+                    <option value="NO_SHOW">Không đến khám</option>
                   </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    * Nếu chọn "Đã khám": hệ thống sẽ tự động chuyển thành "Hoàn thành" (nếu đã thanh toán) hoặc "Cần thanh toán" (nếu chưa thanh toán)
+                  </p>
                 </div>
                 
                 <div>
