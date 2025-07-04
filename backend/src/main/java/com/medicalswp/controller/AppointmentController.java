@@ -10,6 +10,7 @@ import com.medicalswp.service.EmailService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -528,9 +529,6 @@ public class AppointmentController {
             
             response.put("appointment", appointment);
             
-            // Send notification to doctor
-            emailService.sendDoctorAssignmentNotification(appointment);
-            
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             Map<String, String> error = new HashMap<>();
@@ -754,8 +752,8 @@ public class AppointmentController {
             response.put("message", "Bác sĩ đã được chỉ định. Chờ bác sĩ phản hồi.");
             response.put("appointment", updatedAppointment);
             
-            // Send notification to doctor
-            emailService.sendDoctorAssignmentNotification(appointment);
+            // TODO: Send notification to doctor (email/system notification)
+            logger.info("Doctor assigned to appointment {} and notified: {}", id, doctor.getEmail());
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -1348,4 +1346,4 @@ public class AppointmentController {
         public String getReason() { return reason; }
         public void setReason(String reason) { this.reason = reason; }
     }
-}
+} 
