@@ -17,6 +17,35 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - medical-network
+
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: medical-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/medical_db
+      SPRING_DATASOURCE_USERNAME: medical_user
+      SPRING_DATASOURCE_PASSWORD: medical_password
+    depends_on:
+      - postgres
+    networks:
+      - medical-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: medical-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - medical-network
 
   adminer:
     image: adminer
@@ -25,6 +54,12 @@ services:
       - "8081:8080"
     depends_on:
       - postgres
+    networks:
+      - medical-network
 
 volumes:
-  postgres_data: 
+  postgres_data:
+
+networks:
+  medical-network:
+    driver: bridge 
