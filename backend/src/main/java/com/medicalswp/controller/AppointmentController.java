@@ -7,6 +7,13 @@ import com.medicalswp.repository.AppointmentRepository;
 import com.medicalswp.service.AppointmentService;
 import com.medicalswp.service.AppointmentService.AppointmentStats;
 import com.medicalswp.service.EmailService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+@Tag(name = "Appointments", description = "API quản lý lịch hẹn khám bệnh")
 @RestController
 @RequestMapping("/appointments")
 @CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173", "http://localhost:3001", "https://your-frontend-domain.com"})
@@ -52,8 +60,20 @@ public class AppointmentController {
      * PUBLIC: Create appointment (no authentication required)
      * This endpoint will automatically send confirmation email
      */
+    @Operation(
+        summary = "Tạo lịch hẹn công khai", 
+        description = "Endpoint này cho phép người dùng tạo lịch hẹn mà không cần đăng nhập. Email xác nhận sẽ được gửi tự động."
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Tạo lịch hẹn thành công",
+                content = @Content(mediaType = "application/json")),
+        @ApiResponse(responseCode = "400", description = "Dữ liệu đầu vào không hợp lệ"),
+        @ApiResponse(responseCode = "500", description = "Lỗi server")
+    })
     @PostMapping("/public")
-    public ResponseEntity<?> createPublicAppointment(@Valid @RequestBody CreateAppointmentRequest request) {
+    public ResponseEntity<?> createPublicAppointment(
+            @Parameter(description = "Thông tin lịch hẹn", required = true)
+            @Valid @RequestBody CreateAppointmentRequest request) {
         try {
             logger.info("=== Creating public appointment ===");
             logger.info("Request data: fullName={}, email={}, date={}, time={}, department={}", 
@@ -117,10 +137,21 @@ public class AppointmentController {
     /**
      * PUBLIC: Check time slot availability
      */
+    @Operation(
+        summary = "Kiểm tra khung giờ trống", 
+        description = "Kiểm tra xem khung giờ có còn trống hay không cho ngày và khoa cụ thể"
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Kiểm tra thành công"),
+        @ApiResponse(responseCode = "400", description = "Tham số không hợp lệ")
+    })
     @GetMapping("/public/availability")
     public ResponseEntity<?> checkTimeSlotAvailability(
+            @Parameter(description = "Ngày hẹn (YYYY-MM-DD)", required = true, example = "2024-01-15")
             @RequestParam String date,
+            @Parameter(description = "Giờ hẹn (HH:MM)", required = true, example = "09:00")
             @RequestParam String time,
+            @Parameter(description = "Mã khoa khám", required = true, example = "REPRODUCTIVE_HEALTH")
             @RequestParam String department) {
         try {
             logger.info("=== Checking availability for date={}, time={}, department={} ===", date, time, department);
@@ -203,6 +234,12 @@ public class AppointmentController {
     /**
      * ADMIN: Get all appointments
      */
+    @Operation(
+        summary = "Lấy tất cả lịch hẹn", 
+        description = "Lấy danh sách tất cả lịch hẹn (chỉ dành cho Admin/Doctor/Staff)",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponse(responseCode = "200", description = "Lấy danh sách thành công")
     @GetMapping
     // @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
     public ResponseEntity<List<Appointment>> getAllAppointments() {
@@ -218,9 +255,20 @@ public class AppointmentController {
     /**
      * ADMIN: Get appointment by ID
      */
+    @Operation(
+        summary = "Lấy lịch hẹn theo ID", 
+        description = "Lấy thông tin chi tiết lịch hẹn theo ID",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Tìm thấy lịch hẹn"),
+        @ApiResponse(responseCode = "404", description = "Không tìm thấy lịch hẹn")
+    })
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
-    public ResponseEntity<?> getAppointmentById(@PathVariable Long id) {
+    public ResponseEntity<?> getAppointmentById(
+            @Parameter(description = "ID lịch hẹn", required = true, example = "1")
+            @PathVariable Long id) {
         try {
             Optional<Appointment> appointment = appointmentService.getAppointmentById(id);
             if (appointment.isPresent()) {
@@ -239,6 +287,11 @@ public class AppointmentController {
     /**
      * ADMIN: Update appointment
      */
+    @Operation(
+        summary = "Cập nhật lịch hẹn", 
+        description = "Cập nhật thông tin lịch hẹn",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
     public ResponseEntity<?> updateAppointment(@PathVariable Long id, @RequestBody Appointment appointmentDetails) {
@@ -256,256 +309,13 @@ public class AppointmentController {
     }
     
     /**
-     * ADMIN: Confirm appointment
-     */
-    @PutMapping("/{id}/confirm")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
-    public ResponseEntity<?> confirmAppointment(@PathVariable Long id) {
-        try {
-            // Get appointment first
-            Optional<Appointment> appointmentOpt = appointmentService.getAppointmentById(id);
-            if (!appointmentOpt.isPresent()) {
-                Map<String, String> error = new HashMap<>();
-                error.put("error", "Appointment not found with ID: " + id);
-                return ResponseEntity.notFound().build();
-            }
-            
-            Appointment appointment = appointmentOpt.get();
-            
-            // Confirm the appointment
-            Appointment confirmedAppointment = appointmentService.confirmAppointment(id);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Lịch hẹn đã được xác nhận");
-            response.put("appointment", confirmedAppointment);
-            
-            // Auto-create patient account if email is provided and account doesn't exist
-            String email = appointment.getEmail();
-            if (email != null && !email.trim().isEmpty()) {
-                if (!userRepository.existsByEmail(email)) {
-                    try {
-                        // Create new patient account
-                        User newPatient = new User();
-                        newPatient.setUsername(email);
-                        newPatient.setEmail(email);
-                        newPatient.setFullName(appointment.getFullName());
-                        newPatient.setPassword(passwordEncoder.encode("123456"));
-                        newPatient.setRole(User.Role.PATIENT);
-                        newPatient.setActive(true);
-                        
-                        User savedPatient = userRepository.save(newPatient);
-                        
-                        response.put("patientAccountCreated", true);
-                        response.put("patientAccount", Map.of(
-                            "username", savedPatient.getUsername(),
-                            "temporaryPassword", "123456",
-                            "message", "Tài khoản bệnh nhân đã được tạo tự động"
-                        ));
-                        
-                        logger.info("=== Patient account auto-created when confirming appointment: {} for email: {} ===", id, email);
-                        
-                        // Send welcome email with login credentials
-                        try {
-                            String emailContent = String.format(
-                                "Chào %s,\n\n" +
-                                "Lịch hẹn của bạn tại Florism Care đã được xác nhận.\n\n" +
-                                "Tài khoản của bạn đã được tạo tự động:\n" +
-                                "- Username: %s\n" +
-                                "- Password: 123456\n\n" +
-                                "Vui lòng đăng nhập tại website để theo dõi lịch hẹn và thay đổi mật khẩu.\n\n" +
-                                "Thông tin lịch hẹn:\n" +
-                                "- Ngày: %s\n" +
-                                "- Giờ: %s\n" +
-                                "- Khoa: %s\n\n" +
-                                "Trân trọng,\nFlorism Care Team",
-                                appointment.getFullName(), 
-                                email,
-                                appointment.getAppointmentDate(),
-                                appointment.getAppointmentTime(),
-                                appointment.getDepartment().getDepartmentName()
-                            );
-                            
-                            emailService.sendSimpleEmail(
-                                email,
-                                "Xác nhận lịch hẹn & Tài khoản Florism Care",
-                                emailContent
-                            );
-                        } catch (Exception emailError) {
-                            logger.error("Failed to send confirmation email to: {}", email, emailError);
-                        }
-                        
-                    } catch (Exception e) {
-                        logger.error("Error creating patient account when confirming appointment: {} for email: {}", id, email, e);
-                        response.put("patientAccountCreated", false);
-                        response.put("patientAccountError", "Có lỗi khi tạo tài khoản bệnh nhân: " + e.getMessage());
-                    }
-                } else {
-                    response.put("patientAccountCreated", false);
-                    response.put("patientAccountMessage", "Tài khoản với email này đã tồn tại");
-                }
-            } else {
-                response.put("patientAccountCreated", false);
-                response.put("patientAccountMessage", "Không có email để tạo tài khoản");
-            }
-            
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            Map<String, String> error = new HashMap<>();
-            error.put("error", e.getMessage());
-            return ResponseEntity.badRequest().body(error);
-        } catch (Exception e) {
-            logger.error("Error confirming appointment: {}", id, e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-    
-    /**
-     * ADMIN: Confirm appointment with doctor assignment
-     */
-    @PutMapping("/{id}/confirm-with-doctor")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
-    public ResponseEntity<?> confirmAppointmentWithDoctor(@PathVariable Long id, @RequestBody Map<String, Long> request) {
-        try {
-            Long doctorId = request.get("doctorId");
-            if (doctorId == null) {
-                Map<String, String> error = new HashMap<>();
-                error.put("error", "Doctor ID is required");
-                return ResponseEntity.badRequest().body(error);
-            }
-            
-            Appointment confirmedAppointment = appointmentService.confirmAppointmentWithDoctor(id, doctorId);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Lịch hẹn đã được xác nhận và chỉ định bác sĩ");
-            response.put("appointment", confirmedAppointment);
-            
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            Map<String, String> error = new HashMap<>();
-            error.put("error", e.getMessage());
-            return ResponseEntity.badRequest().body(error);
-        } catch (Exception e) {
-            logger.error("Error confirming appointment with doctor: {}", id, e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-    
-    /**
-     * ADMIN: Cancel appointment
-     */
-    @PutMapping("/{id}/cancel")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
-    public ResponseEntity<?> cancelAppointment(@PathVariable Long id, @RequestBody Map<String, String> request) {
-        try {
-            String reason = request.getOrDefault("reason", "Cancelled by staff");
-            Appointment cancelledAppointment = appointmentService.cancelAppointment(id, reason);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Lịch hẹn đã được hủy");
-            response.put("appointment", cancelledAppointment);
-            
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            Map<String, String> error = new HashMap<>();
-            error.put("error", e.getMessage());
-            return ResponseEntity.badRequest().body(error);
-        } catch (Exception e) {
-            logger.error("Error cancelling appointment: {}", id, e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-    
-    /**
-     * ADMIN: Delete appointment
-     */
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> deleteAppointment(@PathVariable Long id) {
-        try {
-            Optional<Appointment> appointment = appointmentService.getAppointmentById(id);
-            if (appointment.isPresent()) {
-                // Actually delete the appointment
-                appointmentService.deleteAppointment(id);
-                Map<String, String> response = new HashMap<>();
-                response.put("message", "Appointment deleted successfully");
-                return ResponseEntity.ok(response);
-            } else {
-                return ResponseEntity.notFound().build();
-            }
-        } catch (Exception e) {
-            logger.error("Error deleting appointment: {}", id, e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-    
-    /**
-     * ADMIN: Get appointments by status
-     */
-    @GetMapping("/status/{status}")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
-    public ResponseEntity<?> getAppointmentsByStatus(@PathVariable String status) {
-        try {
-            Appointment.AppointmentStatus appointmentStatus = Appointment.AppointmentStatus.valueOf(status.toUpperCase());
-            List<Appointment> appointments = appointmentService.getAppointmentsByStatus(appointmentStatus);
-            return ResponseEntity.ok(appointments);
-        } catch (IllegalArgumentException e) {
-            Map<String, String> error = new HashMap<>();
-            error.put("error", "Invalid status: " + status);
-            return ResponseEntity.badRequest().body(error);
-        } catch (Exception e) {
-            logger.error("Error fetching appointments by status: {}", status, e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-    
-    /**
-     * ADMIN: Get today's appointments
-     */
-    @GetMapping("/today")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
-    public ResponseEntity<List<Appointment>> getTodaysAppointments() {
-        try {
-            List<Appointment> appointments = appointmentService.getTodaysAppointments();
-            return ResponseEntity.ok(appointments);
-        } catch (Exception e) {
-            logger.error("Error fetching today's appointments", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-    
-    /**
-     * ADMIN: Get upcoming appointments (next 7 days)
-     */
-    @GetMapping("/upcoming")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
-    public ResponseEntity<List<Appointment>> getUpcomingAppointments() {
-        try {
-            List<Appointment> appointments = appointmentService.getUpcomingAppointments();
-            return ResponseEntity.ok(appointments);
-        } catch (Exception e) {
-            logger.error("Error fetching upcoming appointments", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-    
-    /**
-     * ADMIN: Search appointments
-     */
-    @GetMapping("/search")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
-    public ResponseEntity<List<Appointment>> searchAppointments(@RequestParam(required = false) String q) {
-        try {
-            List<Appointment> appointments = appointmentService.searchAppointments(q);
-            return ResponseEntity.ok(appointments);
-        } catch (Exception e) {
-            logger.error("Error searching appointments", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-    
-    /**
      * ADMIN: Get appointment statistics
      */
+    @Operation(
+        summary = "Lấy thống kê lịch hẹn", 
+        description = "Lấy các thống kê tổng quan về lịch hẹn",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
     @GetMapping("/stats")
     @PreAuthorize("hasRole('ADMIN') or hasRole('DOCTOR') or hasRole('STAFF')")
     public ResponseEntity<?> getAppointmentStats() {
@@ -513,7 +323,7 @@ public class AppointmentController {
             AppointmentStats stats = appointmentService.getAppointmentStats();
             return ResponseEntity.ok(stats);
         } catch (Exception e) {
-            logger.error("Error fetching appointment statistics", e);
+            logger.error("Error fetching appointment stats", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
@@ -717,6 +527,9 @@ public class AppointmentController {
             }
             
             response.put("appointment", appointment);
+            
+            // Send notification to doctor
+            emailService.sendDoctorAssignmentNotification(appointment);
             
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
@@ -941,8 +754,8 @@ public class AppointmentController {
             response.put("message", "Bác sĩ đã được chỉ định. Chờ bác sĩ phản hồi.");
             response.put("appointment", updatedAppointment);
             
-            // TODO: Send notification to doctor (email/system notification)
-            logger.info("Doctor assigned to appointment {} and notified: {}", id, doctor.getEmail());
+            // Send notification to doctor
+            emailService.sendDoctorAssignmentNotification(appointment);
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -1535,4 +1348,4 @@ public class AppointmentController {
         public String getReason() { return reason; }
         public void setReason(String reason) { this.reason = reason; }
     }
-} 
+}

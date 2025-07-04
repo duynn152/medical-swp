@@ -36,9 +36,28 @@ Dự án được streamline thành 2 script chính:
 - `frontend.log` - Logs của Vite dev server
 
 ### URLs sau khi khởi động
-- 📱 Frontend: http://localhost:5173
-- 🔧 Backend: http://localhost:8080
-- 📊 Health Check: http://localhost:8080/api/actuator/health
+- 📱 **Frontend**: http://localhost:5173
+- 🔧 **Backend API**: http://localhost:8080/api
+- 📖 **Swagger UI**: http://localhost:8080/api/swagger-ui.html
+- 📋 **API Docs**: http://localhost:8080/api/v3/api-docs
+- 📊 **Health Check**: http://localhost:8080/api/actuator/health
+
+### API Testing & Documentation
+Script sẽ hiển thị các thông tin sau khi khởi động:
+- **Browse & Test APIs**: http://localhost:8080/api/
+- **Quick Access**: Truy cập `/api` sẽ tự động redirect tới Swagger UI
+- **Authentication**: Sử dụng nút 'Authorize' trong Swagger với JWT token
+- **Login endpoint**: POST /auth/login để lấy token
+
+### Quick Start API Testing
+1. Mở trình duyệt: http://localhost:8080/api/
+2. Test public endpoints (không cần đăng nhập):
+   - POST /appointments/public - Tạo lịch hẹn
+   - GET /appointments/public/availability - Kiểm tra khung giờ trống
+3. Để test protected endpoints:
+   - Dùng /auth/login để lấy JWT token
+   - Click 'Authorize' trong Swagger UI
+   - Nhập: Bearer <your-jwt-token>
 
 ## 🗄️ 2. Database Manager (`database-manager.sh`)
 

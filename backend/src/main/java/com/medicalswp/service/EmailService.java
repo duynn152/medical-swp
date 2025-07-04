@@ -169,6 +169,37 @@ public class EmailService {
         }
     }
     
+    /**
+     * Gửi email thông báo cho bác sĩ khi được phân công lịch hẹn
+     */
+    public boolean sendDoctorAssignmentNotification(Appointment appointment) {
+        try {
+            if (appointment.getDoctor() == null || appointment.getDoctor().getEmail() == null) {
+                logger.error("Cannot send doctor assignment notification: doctor or doctor's email is null");
+                return false;
+            }
+
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            
+            helper.setFrom(fromEmail);
+            helper.setTo(appointment.getDoctor().getEmail());
+            helper.setSubject("👨‍⚕️ Thông báo phân công lịch hẹn mới - " + appName);
+            
+            String htmlContent = buildDoctorAssignmentEmailContent(appointment);
+            helper.setText(htmlContent, true);
+            
+            mailSender.send(message);
+            logger.info("Doctor assignment notification sent successfully to: {}", appointment.getDoctor().getEmail());
+            return true;
+            
+        } catch (MessagingException e) {
+            logger.error("Failed to send doctor assignment notification to: {}", 
+                appointment.getDoctor() != null ? appointment.getDoctor().getEmail() : "unknown", e);
+            return false;
+        }
+    }
+    
     private String buildConfirmationEmailContent(Appointment appointment) {
         DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
         DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
@@ -298,6 +329,38 @@ public class EmailService {
         "</div>" +
         "<p><strong>Lưu ý:</strong> Vui lòng thanh toán trước 24 giờ so với giờ hẹn. Sau khi thanh toán, vui lòng giữ biên lai để xuất trình khi đến khám.</p>" +
         "<p>Liên hệ hỗ trợ: " + contactPhone + " | " + contactEmail + "</p>" +
+        "<p>Trân trọng,<br><strong>" + appName + "</strong></p></div>" +
+        "<div class=\"footer\"><p>" + contactAddress + "</p></div></div></body></html>";
+    }
+
+    private String buildDoctorAssignmentEmailContent(Appointment appointment) {
+        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
+        
+        return "<!DOCTYPE html>" +
+        "<html><head><meta charset=\"UTF-8\"><style>" +
+        "body{font-family:Arial,sans-serif;line-height:1.6;color:#333}" +
+        ".container{max-width:600px;margin:0 auto;padding:20px}" +
+        ".header{background:linear-gradient(135deg,#059669,#047857);color:white;padding:30px;text-align:center;border-radius:10px 10px 0 0}" +
+        ".content{background:#fff;padding:30px;border:1px solid #e0e0e0}" +
+        ".appointment-info{background:#ecfdf5;padding:20px;border-radius:8px;margin:20px 0}" +
+        ".highlight{color:#059669;font-weight:bold}" +
+        ".footer{background:#f8f9fa;padding:20px;text-align:center;border-radius:0 0 10px 10px;font-size:14px;color:#666}" +
+        "</style></head><body>" +
+        "<div class=\"container\"><div class=\"header\">" +
+        "<h1>👨‍⚕️ Thông báo lịch hẹn mới</h1><p>" + appName + "</p></div>" +
+        "<div class=\"content\"><p>Kính chào <strong>BS. " + appointment.getDoctor().getFullName() + "</strong>,</p>" +
+        "<p>Bạn vừa được phân công một lịch hẹn mới:</p>" +
+        "<div class=\"appointment-info\"><h3>📅 Thông tin lịch hẹn</h3>" +
+        "<p><strong>Mã lịch hẹn:</strong> <span class=\"highlight\">#" + appointment.getId() + "</span></p>" +
+        "<p><strong>Bệnh nhân:</strong> " + appointment.getFullName() + "</p>" +
+        "<p><strong>Ngày khám:</strong> <span class=\"highlight\">" + appointment.getAppointmentDate().format(dateFormatter) + "</span></p>" +
+        "<p><strong>Giờ khám:</strong> <span class=\"highlight\">" + appointment.getAppointmentTime().format(timeFormatter) + "</span></p>" +
+        "<p><strong>Khoa khám:</strong> " + appointment.getDepartment() + "</p>" +
+        (appointment.getReason() != null && !appointment.getReason().isEmpty() ? 
+            "<p><strong>Lý do khám:</strong> " + appointment.getReason() + "</p>" : "") +
+        "</div>" +
+        "<p>Vui lòng kiểm tra và xác nhận lịch hẹn trong hệ thống.</p>" +
         "<p>Trân trọng,<br><strong>" + appName + "</strong></p></div>" +
         "<div class=\"footer\"><p>" + contactAddress + "</p></div></div></body></html>";
     }

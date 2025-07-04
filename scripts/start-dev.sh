@@ -141,6 +141,23 @@ wait_for_services() {
         fi
     done
     
+    # Wait for Swagger UI
+    echo -n "Swagger UI: "
+    for i in {1..15}; do
+        if curl -s http://localhost:8080/api/v3/api-docs > /dev/null 2>&1; then
+            echo "✅ Ready!"
+            break
+        else
+            echo -n "."
+            sleep 1
+        fi
+        
+        if [ $i -eq 15 ]; then
+            echo "❌ Timeout!"
+            echo "Swagger is taking too long to initialize."
+        fi
+    done
+    
     # Wait for frontend
     echo -n "Frontend (port 5173): "
     for i in {1..15}; do
@@ -166,19 +183,37 @@ show_services_info() {
     echo "🎉 Medical SWP Development Environment Ready!"
     echo "============================================="
     echo
-    echo "📱 Frontend: http://localhost:5173"
-    echo "🔧 Backend:  http://localhost:8080"
-    echo "📊 Backend Health: http://localhost:8080/api/actuator/health"
+    echo "🌐 Application URLs:"
+    echo "📱 Frontend:     http://localhost:5173"
+    echo "🔧 Backend API:  http://localhost:8080/api"
+    echo "📖 Swagger UI:   http://localhost:8080/api/swagger-ui.html"
+    echo "📋 API Docs:     http://localhost:8080/api/v3/api-docs"
+    echo "📊 Health Check: http://localhost:8080/api/actuator/health"
     echo
-    echo "📁 Logs:"
+    echo "🔍 API Testing:"
+    echo "   • Browse & Test APIs: http://localhost:8080/api/"
+    echo "   • Use 'Authorize' button in Swagger for JWT token"
+    echo "   • Login endpoint: POST /auth/login"
+    echo
+    echo "📁 Log Files:"
     echo "   Backend:  backend.log"
     echo "   Frontend: frontend.log"
     echo
-    echo "🛑 To stop services:"
+    echo "🛑 Stop Services:"
     echo "   Press Ctrl+C or run: ./scripts/stop-dev.sh"
     echo
     echo "🔧 Database Management:"
     echo "   Run: ./scripts/database-manager.sh"
+    echo
+    echo "🚀 Quick Start Guide:"
+    echo "   1. Open browser: http://localhost:8080/api/"
+    echo "   2. Try public endpoints (no auth required):"
+    echo "      • POST /appointments/public - Create appointment"
+    echo "      • GET /appointments/public/availability - Check time slots"
+    echo "   3. For protected endpoints:"
+    echo "      • Use /auth/login to get JWT token"
+    echo "      • Click 'Authorize' in Swagger UI"
+    echo "      • Enter: Bearer <your-jwt-token>"
     echo
 }
 

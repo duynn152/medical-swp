@@ -66,6 +66,12 @@ public class SecurityConfig implements WebMvcConfigurer {
                 .requestMatchers("/public/**").permitAll()
                 .requestMatchers("/uploads/**").permitAll()
                 
+                // Swagger UI and API documentation
+                .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll()
+                .requestMatchers("/v3/api-docs/**", "/api-docs/**").permitAll()
+                .requestMatchers("/swagger-resources/**").permitAll()
+                .requestMatchers("/webjars/**").permitAll()
+                
                 // Allow public access to comments (GET and POST) including reactions and replies
                 .requestMatchers(HttpMethod.GET, "/comments/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/comments/**").permitAll()

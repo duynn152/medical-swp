@@ -3,6 +3,13 @@ package com.medicalswp.controller;
 import com.medicalswp.entity.User;
 import com.medicalswp.service.UserDetailsServiceImpl;
 import com.medicalswp.util.JwtUtil;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -18,6 +25,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+@Tag(name = "Authentication", description = "API xác thực và quản lý phiên đăng nhập")
 @RestController
 @RequestMapping("/auth")
 @CrossOrigin(origins = "*")
@@ -35,8 +43,20 @@ public class AuthController {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Operation(
+        summary = "Đăng nhập hệ thống", 
+        description = "Xác thực người dùng và trả về JWT token để sử dụng cho các API khác"
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Đăng nhập thành công",
+                content = @Content(mediaType = "application/json", 
+                schema = @Schema(implementation = LoginResponse.class))),
+        @ApiResponse(responseCode = "400", description = "Thông tin đăng nhập không chính xác")
+    })
     @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest) {
+    public ResponseEntity<?> login(
+            @Parameter(description = "Thông tin đăng nhập", required = true)
+            @Valid @RequestBody LoginRequest loginRequest) {
         try {
             // Authenticate user
             authenticationManager.authenticate(
@@ -72,6 +92,11 @@ public class AuthController {
         }
     }
 
+    @Operation(
+        summary = "Xác thực JWT token", 
+        description = "Kiểm tra tính hợp lệ của JWT token và trả về thông tin người dùng"
+    )
+    @ApiResponse(responseCode = "200", description = "Kết quả xác thực token")
     @PostMapping("/validate")
     public ResponseEntity<?> validateToken(@RequestBody TokenValidationRequest request) {
         try {
@@ -89,6 +114,10 @@ public class AuthController {
         }
     }
 
+    @Operation(
+        summary = "Debug thông tin xác thực", 
+        description = "Endpoint để debug thông tin xác thực hiện tại (chỉ để phát triển)"
+    )
     @GetMapping("/debug")
     public ResponseEntity<?> debugAuth(HttpServletRequest request) {
         try {
@@ -122,6 +151,14 @@ public class AuthController {
         }
     }
 
+    @Operation(
+        summary = "Tạo admin đầu tiên", 
+        description = "Tạo tài khoản admin đầu tiên cho hệ thống (chỉ được phép khi chưa có admin nào)"
+    )
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Tạo admin thành công"),
+        @ApiResponse(responseCode = "400", description = "Đã tồn tại admin hoặc dữ liệu không hợp lệ")
+    })
     @PostMapping("/create-first-admin")
     public ResponseEntity<?> createFirstAdmin(@Valid @RequestBody CreateFirstAdminRequest request) {
         try {
